@@ -1,0 +1,39 @@
+{
+  "/repo/src/auth.ts": {
+    "path": "/repo/src/auth.ts",
+    "statementMap": {
+      "0": { "start": { "line": 1, "column": 0 }, "end": { "line": 1, "column": 20 } },
+      "1": { "start": { "line": 5, "column": 2 }, "end": { "line": 5, "column": 30 } },
+      "2": { "start": { "line": 9, "column": 2 }, "end": { "line": 9, "column": 25 } },
+      "3": { "start": { "line": 10, "column": 2 }, "end": { "line": 10, "column": 18 } }
+    },
+    "fnMap": {},
+    "branchMap": {},
+    "s": { "0": 3, "1": 0, "2": 2, "3": 0 },
+    "f": {},
+    "b": {}
+  },
+  "/repo/src/util.ts": {
+    "path": "/repo/src/util.ts",
+    "statementMap": {
+      "0": { "start": { "line": 2, "column": 0 }, "end": { "line": 2, "column": 10 } },
+      "1": { "start": { "line": 3, "column": 0 }, "end": { "line": 3, "column": 10 } }
+    },
+    "fnMap": {},
+    "branchMap": {},
+    "s": { "0": 1, "1": 1 },
+    "f": {},
+    "b": {}
+  },
+  "/repo/src/migrations/001.ts": {
+    "path": "/repo/src/migrations/001.ts",
+    "statementMap": {
+      "0": { "start": { "line": 1, "column": 0 }, "end": { "line": 1, "column": 5 } }
+    },
+    "fnMap": {},
+    "branchMap": {},
+    "s": { "0": 0 },
+    "f": {},
+    "b": {}
+  }
+}
