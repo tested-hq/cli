@@ -4,6 +4,7 @@
   "description": "Coverage your agent can use. CLI for patch + project coverage with agent-readable JSON output.",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@9.15.0",
   "bin": {
     "tested": "./dist/tested.js",
     "td": "./dist/td.js"
@@ -33,7 +34,7 @@
   },
   "devDependencies": {
     "@types/node": "22.10.2",
-    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/coverage-v8": "2.1.8",
     "husky": "^9.1.7",
     "tsup": "8.3.5",
     "tsx": "4.19.2",
