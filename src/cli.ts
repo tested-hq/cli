@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { registerDiffCommand } from './commands/diff.js';
 import { registerRunCommand } from './commands/run.js';
 import { registerExplainCommand } from './commands/explain.js';
+import { registerIgnoresCommand } from './commands/ignores.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -12,5 +13,6 @@ export function createProgram(): Command {
   registerDiffCommand(program);
   registerRunCommand(program);
   registerExplainCommand(program);
+  registerIgnoresCommand(program);
   return program;
 }
