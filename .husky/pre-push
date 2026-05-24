@@ -1,0 +1,49 @@
+#!/usr/bin/env sh
+set -e
+
+echo "🐕 dogfood: running tested on itself..."
+
+# 1. Run tests + generate coverage
+npx vitest run --coverage --coverage.reporter=json --coverage.reportsDirectory=coverage
+
+# 2. Build (so dist/tested.js exists and reflects current src)
+npm run build
+
+# 3. Determine base ref: upstream if tracking exists, otherwise HEAD~1
+BASE=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+if [ -z "$BASE" ]; then
+  # No upstream — fall back to previous commit
+  if git rev-parse HEAD~1 >/dev/null 2>&1; then
+    BASE="HEAD~1"
+  else
+    echo "🐕 first commit, no base to diff — skipping coverage gate"
+    exit 0
+  fi
+fi
+
+echo "🐕 base ref: $BASE"
+
+# 4. Run tested diff human format for Jorge's terminal
+node dist/tested.js diff --base "$BASE"
+
+# 5. Gate: JSON parse, check patch.pct >= 50 OR patch.executable === 0 (no new lines)
+JSON=$(node dist/tested.js diff --base "$BASE" --json)
+PATCH_PCT=$(echo "$JSON" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const o=JSON.parse(d);console.log(o.patch.pct);})")
+PATCH_EXEC=$(echo "$JSON" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const o=JSON.parse(d);console.log(o.patch.executable);})")
+
+if [ "$PATCH_EXEC" = "0" ]; then
+  echo "🐕 no new executable lines in patch — gate skipped"
+  exit 0
+fi
+
+# Use awk for float comparison (POSIX sh has no float ops)
+GATE_PASS=$(awk -v p="$PATCH_PCT" 'BEGIN{print (p >= 50) ? 1 : 0}')
+
+if [ "$GATE_PASS" = "1" ]; then
+  echo "🐕 patch coverage $PATCH_PCT% >= 50% — push allowed"
+  exit 0
+else
+  echo "🐕 patch coverage $PATCH_PCT% < 50% — BLOCKING push"
+  echo "🐕 to override: git push --no-verify"
+  exit 1
+fi
