@@ -7,7 +7,7 @@ export const TestedConfigSchema = z.object({
       format: z.literal('istanbul-json').default('istanbul-json'),
       path: z.string().default('coverage/coverage-final.json'),
     })
-    .default({}),
+    .prefault({}),
   base: z.string().default('origin/main'),
 });
 
