@@ -1,0 +1,6 @@
+ignores:
+  - scripts/**
+  - storybook/**
+coverage:
+  path: ./build/coverage-final.json
+base: origin/develop
