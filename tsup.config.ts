@@ -1,0 +1,12 @@
+import { defineConfig } from 'tsup';
+
+export default defineConfig({
+  entry: { tested: 'bin/tested.ts', td: 'bin/td.ts' },
+  format: ['esm'],
+  target: 'node22',
+  outDir: 'dist',
+  clean: true,
+  splitting: false,
+  sourcemap: true,
+  banner: { js: '#!/usr/bin/env node' },
+});
