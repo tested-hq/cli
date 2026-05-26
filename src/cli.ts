@@ -4,6 +4,7 @@ import { registerRunCommand } from './commands/run.js';
 import { registerExplainCommand } from './commands/explain.js';
 import { registerIgnoresCommand } from './commands/ignores.js';
 import { registerInitCommand } from './commands/init.js';
+import { registerCheckCommand } from './commands/check.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -13,6 +14,7 @@ export function createProgram(): Command {
     .version('0.0.1');
   registerInitCommand(program);
   registerDiffCommand(program);
+  registerCheckCommand(program);
   registerRunCommand(program);
   registerExplainCommand(program);
   registerIgnoresCommand(program);
