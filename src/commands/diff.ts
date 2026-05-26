@@ -5,6 +5,7 @@ import { openRepo, resolveBase, headSha, unifiedDiff } from '../git.js';
 import { parseIstanbul } from '../core/istanbul.js';
 import { parseUnifiedDiff } from '../core/diff.js';
 import { splitByIgnore } from '../core/ignores.js';
+import { assertWithinRoot } from '../core/assert-within-root.js';
 import { buildDiffOutput } from '../output/json.js';
 import { formatHuman } from '../output/human.js';
 
@@ -26,6 +27,7 @@ export function registerDiffCommand(program: Command): void {
       const addedByFile = parseUnifiedDiff(diffText);
 
       const coveragePath = resolve(cwd, config.coverage.path);
+      assertWithinRoot(ctx.repoRoot, coveragePath);
       const allFiles = await parseIstanbul({ path: coveragePath, repoRoot: ctx.repoRoot });
       const { kept, ignored } = splitByIgnore(
         allFiles.map((f) => f.path),
@@ -36,8 +38,10 @@ export function registerDiffCommand(program: Command): void {
 
       let projectDelta: number | null = null;
       if (opts.withBaseCoverage) {
+        const baseCoveragePath = resolve(cwd, opts.withBaseCoverage);
+        assertWithinRoot(ctx.repoRoot, baseCoveragePath);
         const baseFiles = await parseIstanbul({
-          path: resolve(cwd, opts.withBaseCoverage),
+          path: baseCoveragePath,
           repoRoot: ctx.repoRoot,
         });
         const baseKept = baseFiles.filter((f) => !ignored.includes(f.path));
