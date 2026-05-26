@@ -13,6 +13,21 @@ describe('TestedConfigSchema', () => {
     const parsed = TestedConfigSchema.parse({ ignores: ['scripts/**'] });
     expect(parsed.ignores).toEqual(['scripts/**']);
   });
+
+  it('round-trips thresholds without dropping them', () => {
+    const parsed = TestedConfigSchema.parse({ thresholds: { patch: 80, project: 60 } });
+    expect(parsed.thresholds).toEqual({ patch: 80, project: 60 });
+  });
+
+  it('accepts no thresholds (field is optional)', () => {
+    const parsed = TestedConfigSchema.parse({});
+    expect(parsed.thresholds).toBeUndefined();
+  });
+
+  it('rejects threshold values outside 0..100', () => {
+    expect(() => TestedConfigSchema.parse({ thresholds: { patch: 101, project: 60 } })).toThrow();
+    expect(() => TestedConfigSchema.parse({ thresholds: { patch: 80, project: -1 } })).toThrow();
+  });
 });
 
 describe('DiffOutputSchema', () => {

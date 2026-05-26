@@ -10,6 +10,16 @@ export const TestedConfigSchema = z.object({
     .prefault({}),
   base: z.string().default('origin/main'),
   testRunner: z.enum(['vitest', 'jest', 'pytest']).nullable().default(null),
+  // Patch / project coverage gates. `tested init` writes these so users can
+  // tune what counts as "passing" — schema MUST accept them so loadConfig
+  // doesn't silently drop the field. Enforcement in `diff` lands in a
+  // follow-up; today we just round-trip the values cleanly.
+  thresholds: z
+    .object({
+      patch: z.number().min(0).max(100),
+      project: z.number().min(0).max(100),
+    })
+    .optional(),
 });
 
 export type TestedConfig = z.infer<typeof TestedConfigSchema>;
