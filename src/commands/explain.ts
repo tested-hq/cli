@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { openRepo } from '../git.js';
 import { parseIstanbul, type FileCoverage } from '../core/istanbul.js';
+import { assertWithinRoot } from '../core/assert-within-root.js';
 
 export interface ExplainResult {
   path: string;
@@ -76,13 +77,16 @@ export function registerExplainCommand(program: Command): void {
       const config = await loadConfig({ cwd });
       const ctx = await openRepo(cwd);
       const coveragePath = resolve(cwd, config.coverage.path);
+      assertWithinRoot(ctx.repoRoot, coveragePath);
       const files = await parseIstanbul({ path: coveragePath, repoRoot: ctx.repoRoot });
       const file = files.find((f) => f.path === relPath);
       if (!file) {
         process.stderr.write(`No coverage data for ${relPath}\n`);
         process.exit(2);
       }
-      const source = await readFile(resolve(cwd, relPath), 'utf8');
+      const resolvedSource = resolve(ctx.repoRoot, relPath);
+      assertWithinRoot(ctx.repoRoot, resolvedSource);
+      const source = await readFile(resolvedSource, 'utf8');
       const sourceLines = source.split('\n');
       const result = explainAt(file, line, sourceLines);
       if (opts.json) {
