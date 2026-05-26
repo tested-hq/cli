@@ -223,6 +223,12 @@ export function registerInitCommand(program: Command): void {
     .option('--json', 'Emit JSON instead of human text', false)
     .action(async (opts: { force: boolean; hooks: boolean; json: boolean }) => {
       try {
+        if (opts.hooks && !process.stdin.isTTY && !opts.force) {
+          process.stderr.write(
+            'error: --hooks in a non-TTY environment requires --force to confirm (would install a git hook unattended)\n',
+          );
+          process.exit(1);
+        }
         const result = await runInit({
           cwd: process.cwd(),
           force: opts.force,
