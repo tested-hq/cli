@@ -9,6 +9,7 @@ export const TestedConfigSchema = z.object({
     })
     .prefault({}),
   base: z.string().default('origin/main'),
+  testRunner: z.enum(['vitest', 'jest', 'pytest']).nullable().default(null),
 });
 
 export type TestedConfig = z.infer<typeof TestedConfigSchema>;
