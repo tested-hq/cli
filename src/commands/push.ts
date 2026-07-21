@@ -14,6 +14,9 @@ import { dim, errorBlock, progress, shareUrl, successLine } from '../output/ui.j
 
 export const DEFAULT_API_BASE = 'https://app.tested.dev';
 
+/** Hosts allowed to use plain http:// for local development only. */
+const LOCAL_HTTP_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
 export interface PushCliOpts {
   token?: string;
   url?: string;
@@ -76,14 +79,63 @@ export function resolveToken(opts: {
   return raw;
 }
 
-/** Resolve API base URL; strip trailing slash. */
+/**
+ * Validate and normalize an ingest API base URL.
+ *
+ * Security: `--url` / TESTED_API_URL control where the ingest Bearer token is
+ * sent. Reject non-https bases (except http://localhost for local dev), reject
+ * embedded credentials, and require a parseable absolute URL.
+ */
+export function assertSafeApiBase(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error('API URL must not be empty');
+  }
+  let u: URL;
+  try {
+    u = new URL(trimmed);
+  } catch {
+    throw new Error(
+      `invalid API URL "${trimmed}" — expected an absolute URL (e.g. https://app.tested.dev)`,
+    );
+  }
+  if (u.username || u.password) {
+    throw new Error('API URL must not embed credentials');
+  }
+  const host = u.hostname.toLowerCase();
+  const isLocalHttpHost =
+    LOCAL_HTTP_HOSTS.has(host) || host.endsWith('.localhost');
+  if (u.protocol === 'https:') {
+    // allowed
+  } else if (u.protocol === 'http:' && isLocalHttpHost) {
+    // local dev only
+  } else {
+    throw new Error(
+      `API URL must use https:// (http:// allowed only for localhost). Got ${u.protocol}//${u.host}`,
+    );
+  }
+  const path = u.pathname.replace(/\/+$/, '');
+  const pathPart = !path || path === '/' ? '' : path;
+  return `${u.origin}${pathPart}`;
+}
+
+/** Resolve API base URL; strip trailing slash; enforce safe scheme/host. */
 export function resolveApiBase(opts: {
   flag?: string;
   env?: NodeJS.ProcessEnv;
 }): string {
   const env = opts.env ?? process.env;
   const raw = opts.flag ?? env.TESTED_API_URL ?? DEFAULT_API_BASE;
-  return raw.replace(/\/+$/, '');
+  return assertSafeApiBase(raw);
+}
+
+/**
+ * Redact userinfo from git remote URLs before putting them in error messages
+ * (https://user:token@host/... must never appear in logs).
+ */
+export function redactGitRemote(url: string): string {
+  const scrubbed = url.replace(/\/\/([^/@\s]+)@/g, '//***@');
+  return scrubbed;
 }
 
 /**
@@ -206,6 +258,9 @@ export async function postIngest(opts: {
   try {
     res = await fetchFn(url, {
       method: 'POST',
+      // Do not follow redirects: a 3xx to another origin could exfiltrate the
+      // Bearer token depending on the fetch implementation.
+      redirect: 'manual',
       headers: {
         Authorization: `Bearer ${opts.token}`,
         'Content-Type': 'application/json',
@@ -216,6 +271,14 @@ export async function postIngest(opts: {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, status: 0, message: `network error: ${message}` };
+  }
+
+  if (res.status >= 300 && res.status < 400) {
+    return {
+      ok: false,
+      status: res.status,
+      message: `ingest redirected (${res.status}); refusing to follow redirects with Bearer token`,
+    };
   }
 
   const text = await res.text();
@@ -403,10 +466,16 @@ export async function executePush(
     };
   }
 
-  const apiBase = resolveApiBase({
-    ...(cli.url !== undefined ? { flag: cli.url } : {}),
-    env,
-  });
+  let apiBase: string;
+  try {
+    apiBase = resolveApiBase({
+      ...(cli.url !== undefined ? { flag: cli.url } : {}),
+      env,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
+  }
   const config: TestedConfig = await loadConfigFn({ cwd: deps.cwd });
   const ctx = await openRepoFn(deps.cwd);
 
@@ -444,9 +513,10 @@ export async function executePush(
       return {
         exitCode: 1,
         stdout: '',
-        stderr: errorBlock(`could not parse owner/name from remote "${origin}"`, [
-          'Pass --owner and --name.',
-        ]),
+        stderr: errorBlock(
+          `could not parse owner/name from remote "${redactGitRemote(origin)}"`,
+          ['Pass --owner and --name.'],
+        ),
       };
     }
     owner = owner ?? parsed.owner;
