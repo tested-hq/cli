@@ -2,6 +2,8 @@
 
 Coverage your agent can use. CLI for patch + project coverage with agent-readable JSON output.
 
+**→ [Getting started (simple path)](docs/GETTING-STARTED.md)**
+
 ## Agent loop
 
 ```
@@ -90,7 +92,7 @@ Push local patch/project coverage to [tested.dev](https://app.tested.dev) and ge
 $ export TESTED_TOKEN=…          # or TESTED_INGEST_TOKEN / --token
 $ export GITHUB_PR_NUMBER=42     # or --pr 42
 $ tested push
-✓ shared  https://app.tested.dev/s/…
+✓ shared  https://app.tested.dev/share/…
   expires 2026-…
 ```
 
