@@ -8,16 +8,20 @@ describe('createProgram', () => {
     expect(program.version()).toBe('0.0.1');
   });
 
-  it('registers the push command', () => {
+  it('registers the push, doctor, and setup commands', () => {
     const program = createProgram();
     const names = program.commands.map((c) => c.name());
     expect(names).toContain('push');
+    expect(names).toContain('doctor');
+    expect(names).toContain('setup');
   });
 
   it('orders commands by workflow', () => {
     const program = createProgram();
     const names = program.commands.map((c) => c.name());
     expect(names).toEqual([
+      'setup',
+      'doctor',
       'init',
       'run',
       'diff',
@@ -32,5 +36,6 @@ describe('createProgram', () => {
     const program = createProgram();
     expect(program.description()).toMatch(/agent loop/i);
     expect(program.description()).toMatch(/tested run/);
+    expect(program.description()).toMatch(/tested setup/);
   });
 });

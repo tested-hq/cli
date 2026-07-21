@@ -2,7 +2,25 @@
 
 Coverage your agent can use. CLI for patch + project coverage with agent-readable JSON output.
 
-**→ [Getting started (simple path)](docs/GETTING-STARTED.md)**
+**→ [Getting started (simple path)](docs/GETTING-STARTED.md)**  
+**→ [GitHub Action](action/README.md)** (`action/action.yml` composite)
+
+## Install (git — not on npm)
+
+```bash
+pnpm add -D github:tested-hq/cli#main
+# pin a commit in production: github:tested-hq/cli#<full-sha>
+cd node_modules/@tested/cli && pnpm install && pnpm build
+```
+
+## First 10 minutes
+
+```
+tested setup            # init + doctor + CI snippet + token help
+tested doctor           # environment checklist (exit 0/1)
+tested run && tested diff && tested check
+tested push --pr <n>    # needs TESTED_TOKEN
+```
 
 ## Security
 
@@ -21,7 +39,7 @@ Coverage your agent can use. CLI for patch + project coverage with agent-readabl
 ## Agent loop
 
 ```
-tested init
+tested setup                # init + doctor + CI / token guidance
 tested run                  # run tests with coverage
 tested diff                 # patch + project report
 tested check                # enforce thresholds (exit non-zero on fail)
