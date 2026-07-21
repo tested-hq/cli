@@ -93,3 +93,46 @@ export function shareUrl(url: string): string {
 export function progress(text: string): string {
   return pc.dim(text);
 }
+
+/**
+ * Map known error messages to multi-line guidance. Falls back to a single
+ * `error: …` line. Always ends with a newline.
+ */
+export function formatCliError(message: string): string {
+  const m = message.trim();
+
+  if (/coverage-final\.json not found/i.test(m)) {
+    const pathMatch = m.match(/at (.+?)\. Run/i);
+    const path = pathMatch?.[1]?.trim();
+    return errorBlock('coverage file missing', [
+      path ? `Expected: ${path}` : 'Expected: coverage/coverage-final.json',
+      '',
+      'Run:  tested run',
+      'Then: tested diff',
+    ]);
+  }
+
+  if (/missing ingest token/i.test(m)) {
+    return errorBlock('missing ingest token', [
+      'Pass --token <token>',
+      'or set TESTED_TOKEN / TESTED_INGEST_TOKEN',
+      '',
+      'Create a token: app.tested.dev → repo → Settings → Ingest token',
+    ]);
+  }
+
+  if (/invalid PR number/i.test(m)) {
+    return errorBlock('invalid PR number', [
+      m.replace(/^invalid PR number\s*/i, '').replace(/^—\s*/, '') || m,
+      '',
+      'Pass --pr <n> or set GITHUB_PR_NUMBER',
+    ]);
+  }
+
+  // Already multi-line blocks from callers (push etc.) — pass through.
+  if (m.startsWith('error:') || m.includes('\n')) {
+    return m.endsWith('\n') ? m : `${m}\n`;
+  }
+
+  return `${pc.red('error')}: ${m}\n`;
+}

@@ -122,17 +122,23 @@ export function formatHuman(out: DiffOutput, opts: FormatHumanOpts = {}): string
   if (out.files.length > 0) {
     lines.push('');
     lines.push(heading('Files in diff:'));
+    const anyPatch = out.files.some((f) => f.patchCoverage !== null);
+    if (!anyPatch) {
+      lines.push(dim('  (project coverage — no executable lines in patch)'));
+    }
     for (const f of out.files) {
+      // Prefer patch % when the file has executable patch lines; otherwise
+      // show project % so agents still see what to fix.
       const hasPatch = f.patchCoverage !== null;
       const pctPart = hasPatch
         ? coloredPctCell(f.patchCoverage!)
-        : dim('-'.padEnd(6));
+        : coloredPctCell(f.projectCoverage);
       lines.push(`  ${pctPart}  ${f.path}`);
-      if (!hasPatch) {
-        lines.push(dim('             no executable lines in patch'));
-      } else if (f.uncoveredRanges.length > 0) {
+      if (f.uncoveredRanges.length > 0) {
         const ranges = formatRangeList(f.uncoveredRanges);
         lines.push(dim(`             uncovered: ${ranges}`));
+      } else if (hasPatch) {
+        lines.push(dim('             fully covered in patch'));
       }
     }
   }

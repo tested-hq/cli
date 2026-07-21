@@ -44,8 +44,8 @@ describe('runCheck — no thresholds configured', () => {
     });
     expect(result.skipped).toBe(true);
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain('no thresholds configured');
-    expect(result.stderr).toContain('skipping gate check');
+    expect(result.stderr).toContain('no thresholds');
+    expect(result.stderr).toContain('gate skipped');
     expect(result.stdout).toBe('');
   });
 
@@ -182,5 +182,54 @@ describe('runCheck — number formatting', () => {
     });
     expect(result.stdout).toContain('87.3%');
     expect(result.stdout).toContain('64.1%');
+  });
+});
+
+describe('runCheck — empty patch (0 executable)', () => {
+  function emptyPatchDiff(projectPct: number): DiffOutput {
+    return {
+      schemaVersion: 1,
+      base: 'main',
+      head: 'abc1234',
+      patch: { executable: 0, covered: 0, pct: 0 },
+      project: {
+        executable: 1000,
+        covered: Math.round(projectPct * 10),
+        pct: projectPct,
+        delta: null,
+      },
+      files: [],
+      ignored: [],
+    };
+  }
+
+  it('skips patch gate and fails only on project when project is low', () => {
+    const result = run({
+      config: makeConfig({ patch: 80, project: 60 }),
+      diff: emptyPatchDiff(27.6),
+      json: false,
+    });
+    expect(result.patchPass).toBe(true);
+    expect(result.projectPass).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain('no executable lines');
+    expect(result.stdout).toContain('[INFO]');
+    expect(result.stdout).toContain('[FAIL]');
+  });
+
+  it('passes overall when project meets threshold and patch is empty', () => {
+    const result = run({
+      config: makeConfig({ patch: 80, project: 60 }),
+      diff: emptyPatchDiff(64),
+      json: true,
+    });
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout) as {
+      patch: { pass: boolean; skipped?: boolean };
+      overall: string;
+    };
+    expect(parsed.patch.pass).toBe(true);
+    expect(parsed.patch.skipped).toBe(true);
+    expect(parsed.overall).toBe('pass');
   });
 });

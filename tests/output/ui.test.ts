@@ -6,6 +6,7 @@ import {
   nextSteps,
   tip,
   colorPct,
+  formatCliError,
 } from '../../src/output/ui.js';
 
 describe('ui helpers', () => {
@@ -49,5 +50,15 @@ describe('ui helpers', () => {
   it('colorPct always includes the percent number', () => {
     expect(colorPct(42.7)).toContain('42.7%');
     expect(colorPct(100)).toContain('100.0%');
+  });
+
+  it('formatCliError expands coverage-missing into guided block', () => {
+    const block = formatCliError(
+      'coverage-final.json not found at /tmp/x/coverage/coverage-final.json. Run `tested run` first.',
+    );
+    expect(block).toContain('error: coverage file missing');
+    expect(block).toContain('Expected: /tmp/x/coverage/coverage-final.json');
+    expect(block).toContain('tested run');
+    expect(block).toContain('tested diff');
   });
 });

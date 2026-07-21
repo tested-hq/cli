@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff } from '../core/computeDiff.js';
 import { formatHuman } from '../output/human.js';
+import { formatCliError } from '../output/ui.js';
 
 export function registerDiffCommand(program: Command): void {
   program
@@ -35,7 +36,7 @@ export function registerDiffCommand(program: Command): void {
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`error: ${message}\n`);
+        process.stderr.write(formatCliError(message));
         process.exitCode = 1;
       }
     });

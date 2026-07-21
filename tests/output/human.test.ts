@@ -75,6 +75,11 @@ describe('formatHuman', () => {
     const text = formatHuman(empty, { tips: false });
     expect(text).toContain('no executable lines in patch');
     expect(text).not.toMatch(/Patch\s+0\.0%/);
+    // File rows fall back to project % instead of repeating the empty-patch note.
+    expect(text).toContain('src/util.ts');
+    expect(text).toContain('90.0%');
+    expect(text).toContain('project coverage');
+    expect(text).not.toMatch(/src\/util\.ts[\s\S]*no executable lines in patch/);
   });
 
   it('wraps long uncovered range lists across lines', () => {

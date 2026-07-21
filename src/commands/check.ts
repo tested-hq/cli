@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff } from '../core/computeDiff.js';
 import type { DiffOutput, TestedConfig } from '../schemas.js';
-import { badge, dim, heading, tip } from '../output/ui.js';
+import { badge, dim, heading, tip, formatCliError } from '../output/ui.js';
 
 export interface CheckInput {
   config: TestedConfig;
@@ -51,7 +51,11 @@ export function runCheck(input: CheckInput): CheckResult {
       projectPass: true,
       overall: 'pass',
       stdout: '',
-      stderr: 'no thresholds configured in .tested.yaml — skipping gate check\n',
+      stderr:
+        `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
+        `\n` +
+        `${dim('  no thresholds in .tested.yaml — gate skipped')}\n` +
+        `${tip('add thresholds.patch / thresholds.project to enforce')}\n`,
       exitCode: 0,
     };
   }
@@ -61,14 +65,22 @@ export function runCheck(input: CheckInput): CheckResult {
   const patchThreshold = config.thresholds.patch;
   const projectThreshold = config.thresholds.project;
 
-  const patchPass = patchPct >= patchThreshold;
+  // Empty patch (0 executable lines) is not a gate failure — nothing changed
+  // that can be covered. Agents and humans both hit this on main-only SHAs.
+  const patchSkipped = diff.patch.executable === 0;
+  const patchPass = patchSkipped ? true : patchPct >= patchThreshold;
   const projectPass = projectPct >= projectThreshold;
   const overall: 'pass' | 'fail' = patchPass && projectPass ? 'pass' : 'fail';
   const exitCode: 0 | 1 = overall === 'pass' ? 0 : 1;
 
   if (json) {
     const payload = {
-      patch: { pct: patchPct, threshold: patchThreshold, pass: patchPass },
+      patch: {
+        pct: patchPct,
+        threshold: patchThreshold,
+        pass: patchPass,
+        ...(patchSkipped ? { skipped: true as const } : {}),
+      },
       project: { pct: projectPct, threshold: projectThreshold, pass: projectPass },
       overall,
     };
@@ -89,14 +101,20 @@ export function runCheck(input: CheckInput): CheckResult {
     `${heading('tested.dev — coverage gate')}  ${overall === 'pass' ? badge('pass') : badge('fail')}`,
   );
   lines.push('');
-  lines.push(formatMetricLine('Patch', patchPct, patchThreshold, patchPass));
+  if (patchSkipped) {
+    lines.push(
+      `  ${'Patch'.padEnd(8)}  ${dim('-')}  ${dim('(no executable lines — skipped)')}  ${badge('info')}`,
+    );
+  } else {
+    lines.push(formatMetricLine('Patch', patchPct, patchThreshold, patchPass));
+  }
   lines.push(formatMetricLine('Project', projectPct, projectThreshold, projectPass));
   if (overall === 'fail') {
     lines.push('');
     lines.push(tip('add tests for uncovered ranges: tested diff'));
   } else {
     lines.push('');
-    lines.push(dim('thresholds met'));
+    lines.push(dim(patchSkipped ? 'project thresholds met (patch skipped)' : 'thresholds met'));
   }
   lines.push('');
 
@@ -159,7 +177,7 @@ export function registerCheckCommand(program: Command): void {
         process.exitCode = result.exitCode;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`error: ${message}\n`);
+        process.stderr.write(formatCliError(message));
         process.exitCode = 1;
       }
     });
