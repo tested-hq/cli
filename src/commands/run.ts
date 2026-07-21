@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import type { TestRunner } from './init.js';
-import { dim, heading, tip } from '../output/ui.js';
+import { dim, errorBlock, heading, tip } from '../output/ui.js';
 
 export interface ResolvedRun {
   command: string;
@@ -43,6 +43,91 @@ export function resolveRunCommand(opts: {
   }
 }
 
+/**
+ * Whether to enforce the safe-run arg denylist.
+ *
+ * On when:
+ *   - TESTED_SAFE_RUN=1 / true, or
+ *   - CI is set (CI=1/true or common CI indicators), or
+ *   - stdin is not a TTY (non-interactive / scripted)
+ */
+export function shouldEnforceSafeRun(opts?: {
+  env?: NodeJS.ProcessEnv;
+  isTTY?: boolean;
+}): boolean {
+  const env = opts?.env ?? process.env;
+  const safe = env.TESTED_SAFE_RUN;
+  if (safe === '1' || safe === 'true') return true;
+  if (safe === '0' || safe === 'false') {
+    // Explicit opt-out still honors CI for safety in pipelines.
+  }
+  const ci = env.CI;
+  if (ci === '1' || ci === 'true') return true;
+  // Common CI env markers
+  if (env.GITHUB_ACTIONS === 'true' || env.GITLAB_CI === 'true') return true;
+
+  const isTTY =
+    opts?.isTTY ??
+    Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  if (!isTTY) return true;
+  return false;
+}
+
+function configPathEscapesRoot(configPath: string, repoRoot: string): boolean {
+  const root = resolve(repoRoot);
+  const abs = isAbsolute(configPath)
+    ? resolve(configPath)
+    : resolve(repoRoot, configPath);
+  const safeRoot = root.endsWith(sep) ? root : root + sep;
+  return !(abs === root || abs.startsWith(safeRoot));
+}
+
+/**
+ * Reject runner flags that are dangerous in non-interactive / CI contexts:
+ * watch mode (hangs CI) and --config paths that escape the repository root.
+ */
+export function assertSafeRunArgs(
+  extraArgs: readonly string[],
+  repoRoot: string,
+): void {
+  for (let i = 0; i < extraArgs.length; i++) {
+    const a = extraArgs[i]!;
+
+    if (
+      a === '--watch' ||
+      a === '--watchAll' ||
+      a === '-w' ||
+      a.startsWith('--watch=') ||
+      a.startsWith('--watchAll=')
+    ) {
+      throw new Error(
+        `unsafe run arg rejected in non-interactive/CI mode: ${a} ` +
+          `(watch mode can hang pipelines; unset TESTED_SAFE_RUN only in interactive use)`,
+      );
+    }
+
+    let configPath: string | undefined;
+    if (a === '--config' || a === '-c') {
+      configPath = extraArgs[i + 1];
+    } else if (a.startsWith('--config=')) {
+      configPath = a.slice('--config='.length);
+    }
+
+    if (configPath !== undefined) {
+      if (!configPath || configPath.startsWith('-')) {
+        throw new Error(
+          `unsafe run arg rejected: --config requires a path under the repository root`,
+        );
+      }
+      if (configPathEscapesRoot(configPath, repoRoot)) {
+        throw new Error(
+          `unsafe run arg rejected: --config path escapes repository root: ${configPath}`,
+        );
+      }
+    }
+  }
+}
+
 export function registerRunCommand(program: Command): void {
   program
     .command('run')
@@ -53,6 +138,17 @@ export function registerRunCommand(program: Command): void {
     .argument('[args...]', 'Extra arguments forwarded to the runner')
     .action(async (extraArgs: string[]) => {
       const cwd = process.cwd();
+      try {
+        if (shouldEnforceSafeRun()) {
+          assertSafeRunArgs(extraArgs, cwd);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(errorBlock(message));
+        process.exitCode = 1;
+        return;
+      }
+
       const config = await loadConfig({ cwd });
       const coveragePath = resolve(cwd, config.coverage.path);
       const { command, args } = resolveRunCommand({

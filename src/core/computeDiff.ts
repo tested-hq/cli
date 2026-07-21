@@ -7,6 +7,7 @@ import {
   unifiedDiff,
   type GitContext,
 } from '../git.js';
+import { assertSafeGitRef } from '../git-ref.js';
 import { parseIstanbul } from './istanbul.js';
 import { parseUnifiedDiff } from './diff.js';
 import { splitByIgnore } from './ignores.js';
@@ -36,7 +37,7 @@ export interface ComputeDiffOpts {
 export async function computeDiff(opts: ComputeDiffOpts): Promise<DiffOutput> {
   const { cwd, config } = opts;
   const ctx = opts.ctx ?? (await openRepo(cwd));
-  const baseRef = opts.baseRef ?? config.base;
+  const baseRef = assertSafeGitRef(opts.baseRef ?? config.base);
   const base = await resolveBase(ctx, baseRef);
   const head = await headSha(ctx);
   const diffText = await unifiedDiff(ctx, base);

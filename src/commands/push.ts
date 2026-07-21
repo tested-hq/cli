@@ -1,3 +1,4 @@
+import { readFileSync, statSync } from 'node:fs';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff } from '../core/computeDiff.js';
@@ -68,15 +69,107 @@ export interface PushResult {
   expiresAt?: string;
 }
 
-/** Resolve ingest token from flag or env (TESTED_TOKEN / TESTED_INGEST_TOKEN). */
+/** Module-level guard so the --token argv warning prints at most once. */
+let tokenArgvWarned = false;
+
+/** Reset the once-flag (tests only). */
+export function resetTokenArgvWarning(): void {
+  tokenArgvWarned = false;
+}
+
+/**
+ * Read token from a file path. Rejects world-readable modes when the platform
+ * exposes POSIX mode bits (best-effort; Windows may skip the check).
+ */
+export function readTokenFile(
+  filePath: string,
+  opts?: { readFileSyncFn?: typeof readFileSync; statSyncFn?: typeof statSync },
+): string {
+  const read = opts?.readFileSyncFn ?? readFileSync;
+  const stat = opts?.statSyncFn ?? statSync;
+  let mode: number | undefined;
+  try {
+    const st = stat(filePath);
+    mode = st.mode;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`could not stat TESTED_TOKEN_FILE "${filePath}": ${message}`);
+  }
+  // World-readable: other-read bit (0o004). Skip when mode looks non-POSIX.
+  if (typeof mode === 'number' && (mode & 0o004) !== 0) {
+    throw new Error(
+      `TESTED_TOKEN_FILE "${filePath}" is world-readable; chmod 600 the file ` +
+        `or move the token to TESTED_TOKEN`,
+    );
+  }
+  let raw: string;
+  try {
+    raw = read(filePath, 'utf8');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`could not read TESTED_TOKEN_FILE "${filePath}": ${message}`);
+  }
+  const token = raw.trim();
+  if (!token) {
+    throw new Error(`TESTED_TOKEN_FILE "${filePath}" is empty`);
+  }
+  return token;
+}
+
+/**
+ * Resolve ingest token.
+ *
+ * Preference order (document prefer env over argv):
+ *   1. --token flag (works, but warns once on TTY — visible in `ps`)
+ *   2. TESTED_TOKEN
+ *   3. TESTED_INGEST_TOKEN
+ *   4. TESTED_TOKEN_FILE (file contents; rejects world-readable when possible)
+ *
+ * Flag still wins when provided so existing scripts keep working; prefer env
+ * or TESTED_TOKEN_FILE so the secret does not appear on process argv.
+ */
 export function resolveToken(opts: {
   flag?: string;
   env?: NodeJS.ProcessEnv;
+  /** Override TTY detection (defaults to process.stderr.isTTY). */
+  isTTY?: boolean;
+  /** Warning sink (defaults to stderr). */
+  warn?: (msg: string) => void;
+  readFileSyncFn?: typeof readFileSync;
+  statSyncFn?: typeof statSync;
 }): string | null {
   const env = opts.env ?? process.env;
-  const raw = opts.flag ?? env.TESTED_TOKEN ?? env.TESTED_INGEST_TOKEN;
-  if (raw === undefined || raw === '') return null;
-  return raw;
+  const isTTY = opts.isTTY ?? Boolean(process.stderr.isTTY);
+  const warn =
+    opts.warn ??
+    ((msg: string) => {
+      process.stderr.write(msg);
+    });
+
+  if (opts.flag !== undefined && opts.flag !== '') {
+    if (isTTY && !tokenArgvWarned) {
+      tokenArgvWarned = true;
+      warn(
+        'warning: --token exposes the secret on process argv (visible to `ps` ' +
+          'and audit agents). Prefer TESTED_TOKEN, TESTED_INGEST_TOKEN, or ' +
+          'TESTED_TOKEN_FILE.\n',
+      );
+    }
+    return opts.flag;
+  }
+
+  const fromEnv = env.TESTED_TOKEN ?? env.TESTED_INGEST_TOKEN;
+  if (fromEnv !== undefined && fromEnv !== '') return fromEnv;
+
+  const tokenFile = env.TESTED_TOKEN_FILE;
+  if (tokenFile) {
+    return readTokenFile(tokenFile, {
+      ...(opts.readFileSyncFn ? { readFileSyncFn: opts.readFileSyncFn } : {}),
+      ...(opts.statSyncFn ? { statSyncFn: opts.statSyncFn } : {}),
+    });
+  }
+
+  return null;
 }
 
 /**
@@ -344,8 +437,9 @@ export function formatPushSuccess(
 /** Multi-line help when the ingest token is missing. */
 export function formatMissingTokenError(): string {
   return errorBlock('missing ingest token', [
-    'Pass --token <token>',
-    'or set TESTED_TOKEN / TESTED_INGEST_TOKEN',
+    'Set TESTED_TOKEN / TESTED_INGEST_TOKEN (preferred)',
+    'or TESTED_TOKEN_FILE=/path/to/token (mode 600)',
+    'or pass --token <token> (avoid on shared hosts — visible in ps)',
     '',
     'Create a token: app.tested.dev → repo → Settings → Ingest token',
   ]);
@@ -375,7 +469,7 @@ export function formatPushError(
     return errorBlock('ingest auth failed', [
       message,
       '',
-      'Pass --token <token> or set TESTED_TOKEN / TESTED_INGEST_TOKEN',
+      'Set TESTED_TOKEN / TESTED_INGEST_TOKEN / TESTED_TOKEN_FILE, or --token',
       'Create a token: app.tested.dev → repo → Settings → Ingest token',
     ]);
   }
@@ -575,7 +669,10 @@ export function registerPushCommand(program: Command): void {
   program
     .command('push')
     .description('Push local coverage to tested.dev and get a share URL')
-    .option('--token <token>', 'Ingest token (or env TESTED_TOKEN / TESTED_INGEST_TOKEN)')
+    .option(
+      '--token <token>',
+      'Ingest token (prefer env TESTED_TOKEN / TESTED_INGEST_TOKEN / TESTED_TOKEN_FILE)',
+    )
     .option(
       '--url <url>',
       `API base URL (default ${DEFAULT_API_BASE}, or env TESTED_API_URL)`,

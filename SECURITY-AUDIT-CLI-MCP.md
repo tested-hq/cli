@@ -5,23 +5,23 @@
 | **Date** | 2026-07-21 |
 | **Scope** | Market-release readiness for `@tested/cli` and `@tested/mcp` |
 | **Repos** | `cli/` (`@tested/cli`), sibling `mcp/` (`@tested/mcp`) |
-| **Branch** | `sec/audit-cli-mcp` |
+| **Branch** | `sec/fix-mediums` (prior: `sec/audit-cli-mcp`) |
 | **Auditor** | Senior security review (automated + manual code inspection) |
 
 ## Executive summary
 
-Both packages are small, mostly well-structured coverage tools. The CLI already had solid path-boundary checks (`assertWithinRoot`) for coverage and source reads. The MCP layer had useful `validateCwd` controls, but **`write_and_verify` skipped them before writing and spawning**, and **`tested push` would send the ingest Bearer token to any attacker-controlled `--url` / `TESTED_API_URL`**, including over cleartext HTTP, while following redirects by default.
+Both packages are small, mostly well-structured coverage tools. The CLI already had solid path-boundary checks (`assertWithinRoot`) for coverage and source reads. Critical/High issues (SSRF/token exfil, write-before-validate, unbounded DoS, `TESTED_BIN` relative path) were fixed on `sec/audit-cli-mcp`.
 
-**Critical/High issues were fixed in this branch** (see § Remediation status). Remaining items are Medium/Low and should be tracked before or shortly after market release.
+**This branch (`sec/fix-mediums`) closes remaining Medium findings** (bin integrity, symlink write escape, run-arg denylist, token file / argv warn, hard payload caps) plus easy Lows (coverage path skip, git ref charset). M2 remains **Accepted** with prominent documentation and `TESTED_ALLOWED_CWDS` recommendation.
 
 ### Severity counts (post-fix residual)
 
-| Severity | Open | Fixed this branch |
-|----------|------|-------------------|
-| Critical | 0 | 2 |
-| High | 0 | 4 |
-| Medium | 6 | 0 |
-| Low / Informational | 5 | 0 |
+| Severity | Open | Fixed | Accepted |
+|----------|------|-------|----------|
+| Critical | 0 | 2 | 0 |
+| High | 0 | 4 | 0 |
+| Medium | 0 | 5 | 1 (M2) |
+| Low / Informational | 2 | 2 | 1 (L4) |
 
 ---
 
@@ -195,13 +195,18 @@ Default `fetch` redirect following can re-send credentials depending on implemen
 |--|--|
 | **Severity** | Medium |
 | **Package** | `@tested/mcp` |
-| **Status** | Open |
+| **Status** | **Fixed** |
+| **CWE** | CWE-426 |
 
 **Description.**  
 After absolute-path validation, any absolute JS file can be executed as the CLI. PATH resolution via `which tested` trusts the environment.
 
-**Remediation.**  
-Prefer `require.resolve('@tested/cli/...')` in production configs; document that `TESTED_BIN` must be admin-controlled; optionally require the basename to match `tested.js` and `fs.realpath` under a known prefix allowlist (`TESTED_BIN_ALLOW_PREFIX`).
+**Fix.**  
+- Basename should match `/^tested(\.js)?$/` when override is used: **hard-fail** if `TESTED_BIN_ALLOW_PREFIX` is set, **warn** otherwise.  
+- Optional env `TESTED_BIN_ALLOW_PREFIX` (colon-separated): resolved realpath of `TESTED_BIN` must start with one of the prefixes.  
+- Documented in MCP README + CLI GETTING-STARTED.
+
+**Tests.** `tests/cli-bin-resolution.test.ts`.
 
 ---
 
@@ -211,14 +216,14 @@ Prefer `require.resolve('@tested/cli/...')` in production configs; document that
 |--|--|
 | **Severity** | Medium |
 | **Package** | Both (especially MCP) |
-| **Status** | Open (accepted with mitigations) |
+| **Status** | **Accepted** (documented + allowlist recommended) |
 
 **Description.**  
 `tested run` and MCP `write_and_verify` intentionally spawn `npx vitest` / jest / pytest in the target project. Opening an untrusted repository is equivalent to running its tests (and thus any code those tests load).
 
-**Remediation.**  
-- Document clearly: only point tools at trusted repos.  
-- Strongly recommend setting `TESTED_ALLOWED_CWDS` for always-on MCP hosts.  
+**Mitigations shipped.**  
+- Prominent README security sections: only trusted cwds.  
+- Strongly recommend `TESTED_ALLOWED_CWDS` for always-on MCP hosts.  
 - Optional future: container/seatbelt sandbox, or `node --permission` / network-disabled vitest.
 
 ---
@@ -229,13 +234,16 @@ Prefer `require.resolve('@tested/cli/...')` in production configs; document that
 |--|--|
 | **Severity** | Medium |
 | **Package** | `@tested/mcp` |
-| **Status** | Open |
+| **Status** | **Fixed** |
+| **CWE** | CWE-59 |
 
 **Description.**  
-`assertWithinCwd` uses string-prefix checks on `path.resolve` results. `validateCwd` rejects a **symlink cwd**, but an intermediate directory under a real git root (e.g. `tests` → `/etc`) can still redirect `writeFile` outside the logical tree.
+`assertWithinCwd` used string-prefix checks on `path.resolve` results. `validateCwd` rejects a **symlink cwd**, but an intermediate directory under a real git root (e.g. `tests` → `/etc`) could still redirect `writeFile` outside the logical tree.
 
-**Remediation.**  
-After resolve, `realpath` the deepest existing ancestor and ensure it remains under `realpath(cwd)`; refuse writes through symlink components (`lstat` walk).
+**Fix.**  
+`assertSafeWritePath`: after resolve, `realpath` the deepest existing ancestor (must stay under `realpath(cwd)`); lstat-walk every path component and refuse symlinks whose realpath is outside the tree.
+
+**Tests.** `tests/safe-path.test.ts`, `tests/tools/write_and_verify.test.ts`.
 
 ---
 
@@ -245,13 +253,15 @@ After resolve, `realpath` the deepest existing ancestor and ensure it remains un
 |--|--|
 | **Severity** | Medium |
 | **Package** | `@tested/cli` |
-| **Status** | Open (mostly intentional) |
+| **Status** | **Fixed** (denylist in non-interactive/CI) |
 
 **Description.**  
 `allowUnknownOption(true)` + `[args...]` forwards user args to `npx vitest|jest` or `python -m pytest`. Spawn uses argv arrays (no shell), which avoids classic injection, but args can enable unexpected runner features (config override, watch mode hangs, custom reporters writing files).
 
-**Remediation.**  
-Document risk; optionally denylist dangerous flags (`--config` pointing outside repo, `--watch`) for non-interactive use; keep argv spawn (do not introduce `shell: true`).
+**Fix.**  
+When `TESTED_SAFE_RUN=1`, `CI` is set, or the process is non-interactive: reject `--watch` / `--watchAll` / `-w`, and reject `--config` / `-c` paths that escape the repo root. Documented in README / GETTING-STARTED. Spawn remains argv-only (no `shell: true`).
+
+**Tests.** `tests/commands/run.test.ts`.
 
 ---
 
@@ -261,13 +271,17 @@ Document risk; optionally denylist dangerous flags (`--config` pointing outside 
 |--|--|
 | **Severity** | Medium |
 | **Package** | `@tested/cli` |
-| **Status** | Open |
+| **Status** | **Fixed** |
 
 **Description.**  
 `tested push --token <secret>` exposes the secret to local process listings (`ps`), audit agents, and crash dumps. Env vars are slightly better but still readable by same-uid processes.
 
-**Remediation.**  
-Document prefer `TESTED_TOKEN` / `TESTED_INGEST_TOKEN`; warn when `--token` is used on a TTY; support reading token from a file descriptor or `TESTED_TOKEN_FILE` with `0600` checks.
+**Fix.**  
+- Prefer documenting env; support `TESTED_TOKEN_FILE` (read file; reject world-readable mode when POSIX bits available).  
+- When `--token` is used on a TTY, stderr warns once.  
+- Documented in README / GETTING-STARTED.
+
+**Tests.** `tests/commands/push.test.ts` (`resolveToken`, `readTokenFile`).
 
 ---
 
@@ -277,13 +291,16 @@ Document prefer `TESTED_TOKEN` / `TESTED_INGEST_TOKEN`; warn when `--token` is u
 |--|--|
 | **Severity** | Medium |
 | **Package** | `@tested/mcp` |
-| **Status** | Open |
+| **Status** | **Fixed** |
+| **CWE** | CWE-400 |
 
 **Description.**  
-`get_uncovered_diff` / `get_coverage_summary` log when JSON exceeds 32 KiB but still return full payloads. Huge diffs can bloat model context or MCP host memory (partially mitigated by CLI stdout cap).
+`get_uncovered_diff` / `get_coverage_summary` logged when JSON exceeds 32 KiB but still returned full payloads. Huge diffs can bloat model context or MCP host memory.
 
-**Remediation.**  
-Hard-truncate or paginate `files[]`; return a `truncated: true` flag.
+**Fix.**  
+`applyPayloadCap` hard-truncates `files[]` when over 200 files or ~64 KiB serialized JSON; sets `truncated: true`. Soft 32 KiB warning retained.
+
+**Tests.** `tests/payload-cap.test.ts`.
 
 ---
 
@@ -293,13 +310,15 @@ Hard-truncate or paginate `files[]`; return a `truncated: true` flag.
 |--|--|
 | **Severity** | Low |
 | **Package** | `@tested/cli` |
-| **Status** | Open |
+| **Status** | **Fixed** |
 
 **Description.**  
-`parseIstanbul` trusts `entry.path` from coverage-final.json for relative path display. A malicious coverage file can inject odd relative paths (`../…`) into JSON output. File *reads* for explain are gated by `assertWithinRoot`.
+`parseIstanbul` trusted `entry.path` from coverage-final.json for relative path display. A malicious coverage file could inject odd relative paths (`../…`) into JSON output. File *reads* for explain are gated by `assertWithinRoot`.
 
-**Remediation.**  
-Skip or reject coverage entries whose resolved path escapes `repoRoot`.
+**Fix.**  
+Skip coverage entries whose resolved path escapes `repoRoot`.
+
+**Tests.** `tests/core/istanbul.test.ts`.
 
 ---
 
@@ -309,13 +328,15 @@ Skip or reject coverage entries whose resolved path escapes `repoRoot`.
 |--|--|
 | **Severity** | Low |
 | **Package** | Both |
-| **Status** | Open |
+| **Status** | **Fixed** |
 
 **Description.**  
 `base` from config/flags/MCP is passed via argv arrays to git (no shell injection). Exotic refs can still cause unexpected git behavior or slow operations.
 
-**Remediation.**  
-Constrain `base` to a safe charset (`[A-Za-z0-9_./@~^-]{1,256}`) and reject leading `-`.
+**Fix.**  
+Constrain `base` to `[A-Za-z0-9_./@~^-]{1,256}` and reject leading `-` (`assertSafeGitRef` in CLI `computeDiff` + MCP tools/schemas).
+
+**Tests.** `tests/git-ref.test.ts` (both packages).
 
 ---
 
@@ -386,21 +407,24 @@ Both packages use `pnpm-lock.yaml` with exact versions in `package.json` for dir
 | Area | Result |
 |------|--------|
 | CLI push → remote API | Fixed C1/H3; token only via Bearer; no token in success JSON |
-| Token handling | Env preferred; `--token` still argv-visible (M5) |
-| Git command injection | Low risk: simple-git argv arrays, no `shell: true` |
-| Path traversal (cwd/coverage) | CLI solid; MCP write fixed C2; symlink residual M3 |
-| Arbitrary file write | MCP write gated by cwd validation + relative path check |
-| Supply chain of test runners | Inherent (M2/M4); document + allowlist |
+| Token handling | Env / `TESTED_TOKEN_FILE` preferred; `--token` warns on TTY (M5 fixed) |
+| Git command injection | Low risk: simple-git argv arrays, no `shell: true`; ref charset (L2) |
+| Path traversal (cwd/coverage) | CLI solid; MCP write fixed C2 + M3 symlink; L1 coverage skip |
+| Arbitrary file write | MCP write gated by cwd validation + symlink-safe path |
+| Supply chain of test runners | Inherent (M2 accepted); run denylist M4; allowlist recommended |
 | SSRF via `--url` | Fixed C1 |
-| Secret leakage in logs/JSON | Fixed H1; residual M5/L3 |
-| MCP tool args (cwd, paths) | validateCwd + assertWithinCwd |
-| Command injection via `TESTED_BIN` | Absolute path required (H4); integrity open (M1) |
-| Sandbox escape | Allowlist optional; default any git repo (M2) |
+| Secret leakage in logs/JSON | Fixed H1/M5; residual L3 (test stdout) |
+| MCP tool args (cwd, paths) | validateCwd + assertSafeWritePath |
+| Command injection via `TESTED_BIN` | Absolute path (H4) + prefix/basename integrity (M1) |
+| Sandbox escape | Allowlist optional; default any git repo (M2 accepted) |
 | DoS via `write_and_verify` | Fixed H2 |
+| MCP payload size | Hard caps + `truncated` (M6) |
 
 ---
 
-## Remediation status (this branch)
+## Remediation status
+
+### Prior branch (`sec/audit-cli-mcp`) — Critical / High
 
 ### `@tested/cli`
 
@@ -419,14 +443,36 @@ Both packages use `pnpm-lock.yaml` with exact versions in `package.json` for dir
 | 1 MiB content cap | `src/tools/write_and_verify.ts` |
 | Runner timeout + output caps | `src/tools/run-tests.ts` |
 | CLI timeout + stdout cap + NUL reject | `src/cli.ts` |
-| `assertSafeTestedBin` | `src/cli.ts` |
+| `assertSafeTestedBin` (absolute path) | `src/cli.ts` |
 | Tests | `tests/tools/write_and_verify.test.ts`, `tests/cli-bin-resolution.test.ts` |
+
+### This branch (`sec/fix-mediums`) — Medium / easy Low
+
+### `@tested/cli`
+
+| Change | File(s) |
+|--------|---------|
+| M4 safe-run denylist (`--watch`, escaping `--config`) | `src/commands/run.ts` |
+| M5 `TESTED_TOKEN_FILE` + TTY `--token` warn | `src/commands/push.ts` |
+| L1 skip coverage entries outside repoRoot | `src/core/istanbul.ts` |
+| L2 `assertSafeGitRef` on base | `src/git-ref.ts`, `src/core/computeDiff.ts` |
+| Security docs | `README.md`, `docs/GETTING-STARTED.md` |
+
+### `@tested/mcp`
+
+| Change | File(s) |
+|--------|---------|
+| M1 `TESTED_BIN_ALLOW_PREFIX` + basename policy | `src/cli.ts` |
+| M3 symlink-safe write path | `src/safe-path.ts`, `src/tools/write_and_verify.ts` |
+| M6 hard payload caps + `truncated` | `src/payload-cap.ts`, tools |
+| L2 git ref validation | `src/git-ref.ts`, schemas, tools |
+| Security docs | `README.md` |
 
 ### Verification
 
 ```text
-cli:  pnpm test  → 135 passed
-mcp:  pnpm test  → 42 passed (5 skipped env-dependent)
+cli:  pnpm test
+mcp:  pnpm test
 ```
 
 ---
@@ -435,14 +481,11 @@ mcp:  pnpm test  → 42 passed (5 skipped env-dependent)
 
 Before marketing “secure by default” for always-on agent hosts:
 
-1. **Ship** this branch’s Critical/High fixes.  
-2. **Document** in both READMEs:  
-   - Prefer `TESTED_TOKEN` over `--token`.  
-   - Set `TESTED_ALLOWED_CWDS` for MCP.  
-   - Only trusted repositories.  
-3. **Track** M1 (bin integrity), M3 (symlink write), M5 (token file), M6 (hard payload caps).  
-4. Add CI job: `pnpm audit --prod` + license check.  
-5. Consider defaulting MCP to **deny** when `TESTED_ALLOWED_CWDS` is unset in non-TTY / service installs (breaking change — gate behind env `TESTED_REQUIRE_ALLOWLIST=1`).
+1. **Ship** Critical/High + Medium fixes (this branch).  
+2. **Document** (done): prefer env token, `TESTED_ALLOWED_CWDS`, trusted repos only, `TESTED_BIN_ALLOW_PREFIX`.  
+3. Add CI job: `pnpm audit --prod` + license check.  
+4. Consider defaulting MCP to **deny** when `TESTED_ALLOWED_CWDS` is unset in non-TTY / service installs (breaking change — gate behind env `TESTED_REQUIRE_ALLOWLIST=1`).  
+5. Residual accepted: M2 (untrusted repo RCE by design of test runners); L3 (test stdout secrets); optional future sandboxing.
 
 ---
 
@@ -463,11 +506,16 @@ No secrets were embedded in this report or in test fixtures (tokens like `secret
 
 | Control | CLI | MCP |
 |---------|-----|-----|
-| Path within root | `assertWithinRoot` | `assertWithinCwd` + `validateCwd` |
+| Path within root | `assertWithinRoot` | `assertSafeWritePath` + `validateCwd` |
 | Cwd is git repo | implicit via `openRepo` | explicit `.git` check |
 | Symlink cwd rejected | no | yes |
+| Intermediate symlink write escape | n/a | realpath + lstat walk |
 | Allowlist | n/a | `TESTED_ALLOWED_CWDS` |
-| HTTPS API only | yes (post-fix) | n/a |
+| Bin integrity | n/a | `TESTED_BIN_ALLOW_PREFIX` + basename |
+| HTTPS API only | yes | n/a |
 | Redirects disabled on auth POST | yes | n/a |
+| Safe run denylist | CI / non-TTY / `TESTED_SAFE_RUN` | n/a |
+| Token file / argv warn | yes | n/a |
+| Git ref charset | yes | yes |
 | Subprocess shell | no | no |
-| Output / time limits | no (run inherits) | yes (post-fix) |
+| Output / time limits | no (run inherits) | yes + hard payload caps |
