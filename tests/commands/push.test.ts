@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   resolveToken,
   resolveApiBase,
+  assertSafeApiBase,
+  redactGitRemote,
   resolvePrNumber,
   parseGitHubRemote,
   sanitizeAuthor,
@@ -71,7 +73,7 @@ describe('resolveToken', () => {
   });
 });
 
-describe('resolveApiBase', () => {
+describe('resolveApiBase / assertSafeApiBase', () => {
   it('defaults to app.tested.dev', () => {
     expect(resolveApiBase({ env: {} })).toBe(DEFAULT_API_BASE);
   });
@@ -85,6 +87,44 @@ describe('resolveApiBase', () => {
     ).toBe('https://example.com');
     expect(resolveApiBase({ env: { TESTED_API_URL: 'https://env.example/' } })).toBe(
       'https://env.example',
+    );
+  });
+
+  it('allows http only for localhost', () => {
+    expect(assertSafeApiBase('http://localhost:3000/')).toBe('http://localhost:3000');
+    expect(assertSafeApiBase('http://127.0.0.1:8080')).toBe('http://127.0.0.1:8080');
+  });
+
+  it('rejects non-https remote URLs (SSRF / token exfil)', () => {
+    expect(() => assertSafeApiBase('http://evil.example/')).toThrow(/https/);
+    expect(() => assertSafeApiBase('ftp://app.tested.dev')).toThrow(/https/);
+  });
+
+  it('rejects embedded credentials in API URL', () => {
+    expect(() =>
+      assertSafeApiBase('https://user:pass@app.tested.dev'),
+    ).toThrow(/credentials/);
+  });
+
+  it('rejects non-absolute / unparseable URLs', () => {
+    expect(() => assertSafeApiBase('not-a-url')).toThrow(/invalid API URL/);
+    expect(() => assertSafeApiBase('')).toThrow(/empty/);
+  });
+});
+
+describe('redactGitRemote', () => {
+  it('redacts userinfo from https remotes', () => {
+    expect(redactGitRemote('https://ghp_secret@github.com/acme/widgets.git')).toBe(
+      'https://***@github.com/acme/widgets.git',
+    );
+    expect(
+      redactGitRemote('https://user:token@github.com/acme/widgets.git'),
+    ).toBe('https://***@github.com/acme/widgets.git');
+  });
+
+  it('leaves scp-style remotes unchanged', () => {
+    expect(redactGitRemote('git@github.com:acme/widgets.git')).toBe(
+      'git@github.com:acme/widgets.git',
     );
   });
 });
@@ -218,6 +258,7 @@ describe('postIngest', () => {
     const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(String(url)).toBe('https://app.tested.dev/api/ingest');
       expect(init?.method).toBe('POST');
+      expect(init?.redirect).toBe('manual');
       const headers = init?.headers as Record<string, string>;
       expect(headers.Authorization).toBe('Bearer secret');
       expect(headers['Content-Type']).toBe('application/json');
@@ -243,6 +284,38 @@ describe('postIngest', () => {
       expect(result.data.expiresAt).toBe('2026-08-01T00:00:00.000Z');
     }
     expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
+  it('refuses to follow HTTP redirects (token exfil)', async () => {
+    const fetchFn = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { Location: 'https://evil.example/steal' },
+        }),
+    );
+    const result = await postIngest({
+      apiBase: 'https://app.tested.dev',
+      token: 'secret',
+      body: buildIngestBody({
+        owner: 'a',
+        name: 'b',
+        baseRef: 'main',
+        prNumber: 1,
+        prTitle: 't',
+        author: 'u',
+        headRef: 'h',
+        headSha: 's',
+        runUrl: null,
+        diff: makeDiff(),
+      }),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(302);
+      expect(result.message).toMatch(/redirect/i);
+    }
   });
 
   it('returns status + message on non-200', async () => {
@@ -377,6 +450,17 @@ describe('executePush', () => {
     expect(result.stderr).toMatch(/TESTED_TOKEN/);
     expect(result.stderr).toMatch(/TESTED_INGEST_TOKEN/);
     expect(result.stderr).toContain('Pass --token');
+  });
+
+  it('rejects unsafe --url before contacting the network', async () => {
+    const fetchFn = vi.fn();
+    const result = await executePush(
+      { json: false, token: 't', pr: '1', url: 'http://evil.example' },
+      { cwd: '/repo', env: {}, fetchFn: fetchFn as unknown as typeof fetch, onProgress: () => {} },
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/https/i);
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('errors clearly when PR number is missing', async () => {
