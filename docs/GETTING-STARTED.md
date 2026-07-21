@@ -48,18 +48,21 @@ Prereqs on **app.tested.dev**:
 3. **Settings → Ingest token** → copy token  
 
 ```bash
-export TESTED_TOKEN=…           # or TESTED_INGEST_TOKEN
+export TESTED_TOKEN=…           # preferred (or TESTED_INGEST_TOKEN)
+# or: export TESTED_TOKEN_FILE=$HOME/.config/tested/token  # chmod 600
 export GITHUB_PR_NUMBER=42      # or --pr 42
 
 tested push
 # → https://app.tested.dev/share/…
 ```
 
+Prefer env / token file over `--token` so the secret does not appear on process argv.
+
 Useful flags:
 
 | Flag | Default |
 |------|---------|
-| `--token` | `TESTED_TOKEN` / `TESTED_INGEST_TOKEN` |
+| `--token` | prefer `TESTED_TOKEN` / `TESTED_INGEST_TOKEN` / `TESTED_TOKEN_FILE` |
 | `--url` | `https://app.tested.dev` (`TESTED_API_URL`) |
 | `--owner` / `--name` | from `git remote origin` |
 | `--pr` | `GITHUB_PR_NUMBER` / `PR_NUMBER` |
@@ -85,7 +88,11 @@ Errors are guided (missing token, repo not found, bad token).
     "tested": {
       "command": "node",
       "args": ["/path/to/mcp/dist/tested-mcp.js"],
-      "env": { "TESTED_BIN": "/path/to/cli/dist/tested.js" }
+      "env": {
+        "TESTED_BIN": "/path/to/cli/dist/tested.js",
+        "TESTED_BIN_ALLOW_PREFIX": "/path/to/cli/dist",
+        "TESTED_ALLOWED_CWDS": "/absolute/path/to/your-project"
+      }
     }
   }
 }
@@ -93,6 +100,16 @@ Errors are guided (missing token, repo not found, bad token).
 
 Tools: `get_coverage_summary`, `get_uncovered_diff`, `explain_line`, `write_and_verify`  
 All need `cwd` + existing `coverage/coverage-final.json` (run `tested run` first).
+
+**Security:** only trusted repo cwds. For always-on MCP hosts set
+`TESTED_ALLOWED_CWDS`. Optional `TESTED_BIN_ALLOW_PREFIX` (colon-separated)
+restricts which realpaths may be used as the CLI binary.
+
+## 7. Safe `tested run` in CI
+
+`tested run` forwards extra args to the runner. In CI / non-interactive mode /
+with `TESTED_SAFE_RUN=1` it rejects `--watch` / `--watchAll` and `--config`
+paths outside the repository root.
 
 ## What you get
 

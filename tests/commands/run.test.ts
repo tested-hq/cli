@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { resolveRunCommand } from '../../src/commands/run.js';
+import {
+  resolveRunCommand,
+  shouldEnforceSafeRun,
+  assertSafeRunArgs,
+} from '../../src/commands/run.js';
 
 describe('resolveRunCommand', () => {
   it('uses npx vitest with --coverage by default', () => {
@@ -56,5 +60,61 @@ describe('resolveRunCommand with runner param', () => {
   it('defaults to vitest when runner is null', () => {
     const r = resolveRunCommand({ runner: null, extraArgs: [] });
     expect(r.args).toContain('vitest');
+  });
+});
+
+describe('shouldEnforceSafeRun', () => {
+  it('enforces when TESTED_SAFE_RUN=1', () => {
+    expect(
+      shouldEnforceSafeRun({ env: { TESTED_SAFE_RUN: '1' }, isTTY: true }),
+    ).toBe(true);
+  });
+
+  it('enforces in CI even on a TTY', () => {
+    expect(shouldEnforceSafeRun({ env: { CI: 'true' }, isTTY: true })).toBe(
+      true,
+    );
+  });
+
+  it('enforces when non-interactive', () => {
+    expect(shouldEnforceSafeRun({ env: {}, isTTY: false })).toBe(true);
+  });
+
+  it('allows interactive local use without flags', () => {
+    expect(shouldEnforceSafeRun({ env: {}, isTTY: true })).toBe(false);
+  });
+});
+
+describe('assertSafeRunArgs', () => {
+  const root = '/repo';
+
+  it('allows benign args', () => {
+    expect(() =>
+      assertSafeRunArgs(['src/a.test.ts', '--reporter=verbose'], root),
+    ).not.toThrow();
+  });
+
+  it('rejects --watch and --watchAll', () => {
+    expect(() => assertSafeRunArgs(['--watch'], root)).toThrow(/watch/);
+    expect(() => assertSafeRunArgs(['--watchAll'], root)).toThrow(/watch/);
+    expect(() => assertSafeRunArgs(['-w'], root)).toThrow(/watch/);
+  });
+
+  it('rejects --config paths outside the repo root', () => {
+    expect(() =>
+      assertSafeRunArgs(['--config', '/etc/evil.config.js'], root),
+    ).toThrow(/escapes/);
+    expect(() =>
+      assertSafeRunArgs(['--config=../outside/vitest.config.ts'], root),
+    ).toThrow(/escapes/);
+  });
+
+  it('allows --config paths inside the repo', () => {
+    expect(() =>
+      assertSafeRunArgs(['--config', 'vitest.config.ts'], root),
+    ).not.toThrow();
+    expect(() =>
+      assertSafeRunArgs(['--config=/repo/vitest.config.ts'], root),
+    ).not.toThrow();
   });
 });

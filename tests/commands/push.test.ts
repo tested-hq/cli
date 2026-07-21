@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   resolveToken,
+  readTokenFile,
+  resetTokenArgvWarning,
   resolveApiBase,
   assertSafeApiBase,
   redactGitRemote,
@@ -55,21 +57,74 @@ describe('resolveToken', () => {
       resolveToken({
         flag: 'flag-token',
         env: { TESTED_TOKEN: 'env-token', TESTED_INGEST_TOKEN: 'ingest' },
+        isTTY: false,
       }),
     ).toBe('flag-token');
   });
 
   it('falls back to TESTED_TOKEN then TESTED_INGEST_TOKEN', () => {
-    expect(resolveToken({ env: { TESTED_TOKEN: 'a' } })).toBe('a');
-    expect(resolveToken({ env: { TESTED_INGEST_TOKEN: 'b' } })).toBe('b');
+    expect(resolveToken({ env: { TESTED_TOKEN: 'a' }, isTTY: false })).toBe('a');
+    expect(resolveToken({ env: { TESTED_INGEST_TOKEN: 'b' }, isTTY: false })).toBe(
+      'b',
+    );
     expect(
-      resolveToken({ env: { TESTED_TOKEN: 'a', TESTED_INGEST_TOKEN: 'b' } }),
+      resolveToken({
+        env: { TESTED_TOKEN: 'a', TESTED_INGEST_TOKEN: 'b' },
+        isTTY: false,
+      }),
     ).toBe('a');
   });
 
+  it('reads TESTED_TOKEN_FILE when env tokens are unset', () => {
+    const warnings: string[] = [];
+    const token = resolveToken({
+      env: { TESTED_TOKEN_FILE: '/secret/token' },
+      isTTY: false,
+      warn: (m) => warnings.push(m),
+      readFileSyncFn: (() => '  file-token\n') as unknown as typeof import('node:fs').readFileSync,
+      statSyncFn: (() => ({ mode: 0o600 })) as unknown as typeof import('node:fs').statSync,
+    });
+    expect(token).toBe('file-token');
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('warns once on TTY when --token is used', () => {
+    resetTokenArgvWarning();
+    const warnings: string[] = [];
+    const warn = (m: string) => warnings.push(m);
+    expect(
+      resolveToken({ flag: 'secret', env: {}, isTTY: true, warn }),
+    ).toBe('secret');
+    expect(
+      resolveToken({ flag: 'secret2', env: {}, isTTY: true, warn }),
+    ).toBe('secret2');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/--token/);
+  });
+
   it('returns null when missing', () => {
-    expect(resolveToken({ env: {} })).toBeNull();
-    expect(resolveToken({ flag: '', env: {} })).toBeNull();
+    expect(resolveToken({ env: {}, isTTY: false })).toBeNull();
+    expect(resolveToken({ flag: '', env: {}, isTTY: false })).toBeNull();
+  });
+});
+
+describe('readTokenFile', () => {
+  it('rejects world-readable token files', () => {
+    expect(() =>
+      readTokenFile('/t', {
+        readFileSyncFn: (() => 'tok') as unknown as typeof import('node:fs').readFileSync,
+        statSyncFn: (() => ({ mode: 0o644 })) as unknown as typeof import('node:fs').statSync,
+      }),
+    ).toThrow(/world-readable/);
+  });
+
+  it('accepts mode 0600', () => {
+    expect(
+      readTokenFile('/t', {
+        readFileSyncFn: (() => 'tok\n') as unknown as typeof import('node:fs').readFileSync,
+        statSyncFn: (() => ({ mode: 0o600 })) as unknown as typeof import('node:fs').statSync,
+      }),
+    ).toBe('tok');
   });
 });
 
@@ -449,7 +504,7 @@ describe('executePush', () => {
     expect(result.stderr).toMatch(/missing ingest token/i);
     expect(result.stderr).toMatch(/TESTED_TOKEN/);
     expect(result.stderr).toMatch(/TESTED_INGEST_TOKEN/);
-    expect(result.stderr).toContain('Pass --token');
+    expect(result.stderr).toMatch(/TESTED_TOKEN_FILE|--token/);
   });
 
   it('rejects unsafe --url before contacting the network', async () => {

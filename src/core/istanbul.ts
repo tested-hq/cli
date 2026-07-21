@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 
 export interface StatementCoverage {
   id: string;
@@ -25,6 +25,23 @@ interface IstanbulFile {
   s: Record<string, number>;
 }
 
+/**
+ * True when a resolved coverage entry path is inside repoRoot.
+ * Rejects `../` escapes and absolute paths that land outside the root.
+ */
+export function isCoveragePathInsideRoot(
+  repoRoot: string,
+  entryPath: string,
+): boolean {
+  const root = resolve(repoRoot);
+  const absPath = resolve(entryPath);
+  const relPath = relative(root, absPath).split('\\').join('/');
+  if (!relPath || relPath === '') return true;
+  if (isAbsolute(relPath)) return false;
+  if (relPath === '..' || relPath.startsWith('../')) return false;
+  return true;
+}
+
 export async function parseIstanbul(opts: {
   path: string;
   repoRoot: string;
@@ -42,7 +59,12 @@ export async function parseIstanbul(opts: {
   }
   const data = JSON.parse(raw) as Record<string, IstanbulFile>;
   const root = resolve(opts.repoRoot);
-  return Object.values(data).map((entry) => {
+  const out: FileCoverage[] = [];
+  for (const entry of Object.values(data)) {
+    // Skip malicious / confused paths that escape the repository root.
+    if (!isCoveragePathInsideRoot(root, entry.path)) {
+      continue;
+    }
     const absPath = resolve(entry.path);
     const relPath = relative(root, absPath).split('\\').join('/');
     const statements = Object.entries(entry.statementMap).map(([id, loc]) => ({
@@ -51,6 +73,7 @@ export async function parseIstanbul(opts: {
       endLine: loc.end.line,
       hits: entry.s[id] ?? 0,
     }));
-    return { path: relPath, absPath, statements };
-  });
+    out.push({ path: relPath, absPath, statements });
+  }
+  return out;
 }
