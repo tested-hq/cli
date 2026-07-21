@@ -1,7 +1,10 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import type { TestRunner } from './init.js';
+import { dim, heading, tip } from '../output/ui.js';
 
 export interface ResolvedRun {
   command: string;
@@ -43,18 +46,42 @@ export function resolveRunCommand(opts: {
 export function registerRunCommand(program: Command): void {
   program
     .command('run')
-    .description("Run the user's test suite with coverage enabled (runner read from .tested.yaml; defaults to vitest)")
+    .description(
+      "Run the user's test suite with coverage enabled (runner read from .tested.yaml; defaults to vitest)",
+    )
     .allowUnknownOption(true)
     .argument('[args...]', 'Extra arguments forwarded to the runner')
     .action(async (extraArgs: string[]) => {
-      const config = await loadConfig({ cwd: process.cwd() });
+      const cwd = process.cwd();
+      const config = await loadConfig({ cwd });
+      const coveragePath = resolve(cwd, config.coverage.path);
       const { command, args } = resolveRunCommand({
         runner: config.testRunner,
         extraArgs,
       });
+
+      process.stderr.write(heading('tested.dev — running tests with coverage') + '\n');
+      process.stderr.write(dim(`${command} ${args.join(' ')}`) + '\n\n');
+
       const child = spawn(command, args, { stdio: 'inherit' });
       child.on('exit', (code) => {
-        process.exit(code ?? 1);
+        const exit = code ?? 1;
+        const coverageWritten = existsSync(coveragePath);
+        if (exit === 0) {
+          process.stderr.write('\n');
+          process.stderr.write(tip('tested diff') + '\n');
+          process.stderr.write(tip('tested check') + '\n');
+        } else {
+          process.stderr.write('\n');
+          process.stderr.write(
+            dim(
+              coverageWritten
+                ? `tests failed (exit ${exit}); coverage still written to ${config.coverage.path}`
+                : `tests failed (exit ${exit}); no coverage file at ${config.coverage.path}`,
+            ) + '\n',
+          );
+        }
+        process.exit(exit);
       });
     });
 }

@@ -11,21 +11,32 @@ export function registerDiffCommand(program: Command): void {
     .option('--with-base-coverage <path>', 'Compare project coverage against a baseline JSON', undefined)
     .option('--json', 'Emit schema-v1 JSON instead of human text', false)
     .action(async (opts: { base?: string; withBaseCoverage?: string; json: boolean }) => {
-      const cwd = process.cwd();
-      const config = await loadConfig({ cwd });
-      const output = await computeDiff({
-        cwd,
-        config,
-        ...(opts.base !== undefined ? { baseRef: opts.base } : {}),
-        ...(opts.withBaseCoverage !== undefined
-          ? { withBaseCoverage: opts.withBaseCoverage }
-          : {}),
-      });
+      try {
+        const cwd = process.cwd();
+        const config = await loadConfig({ cwd });
+        const output = await computeDiff({
+          cwd,
+          config,
+          ...(opts.base !== undefined ? { baseRef: opts.base } : {}),
+          ...(opts.withBaseCoverage !== undefined
+            ? { withBaseCoverage: opts.withBaseCoverage }
+            : {}),
+        });
 
-      if (opts.json) {
-        process.stdout.write(JSON.stringify(output, null, 2) + '\n');
-      } else {
-        process.stdout.write(formatHuman(output) + '\n');
+        if (opts.json) {
+          process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+        } else {
+          process.stdout.write(
+            formatHuman(output, {
+              ...(config.thresholds ? { thresholds: config.thresholds } : {}),
+              tips: true,
+            }) + '\n',
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`error: ${message}\n`);
+        process.exitCode = 1;
       }
     });
 }

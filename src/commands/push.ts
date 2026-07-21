@@ -10,6 +10,7 @@ import {
   type GitContext,
 } from '../git.js';
 import type { DiffOutput, TestedConfig } from '../schemas.js';
+import { dim, errorBlock, progress, shareUrl, successLine } from '../output/ui.js';
 
 export const DEFAULT_API_BASE = 'https://app.tested.dev';
 
@@ -197,7 +198,7 @@ export async function postIngest(opts: {
   fetchFn?: typeof fetch;
 }): Promise<
   | { ok: true; status: number; data: IngestSuccess }
-  | { ok: false; status: number; message: string }
+  | { ok: false; status: number; message: string; code?: string }
 > {
   const fetchFn = opts.fetchFn ?? globalThis.fetch;
   const url = `${opts.apiBase}/api/ingest`;
@@ -247,12 +248,17 @@ export async function postIngest(opts: {
   }
 
   let message = text || res.statusText || 'unknown error';
+  let code: string | undefined;
   if (parsed && typeof parsed === 'object') {
     const obj = parsed as Record<string, unknown>;
     if (typeof obj.message === 'string') message = obj.message;
     else if (typeof obj.error === 'string') message = obj.error;
+    if (typeof obj.code === 'string') code = obj.code;
+    else if (typeof obj.error === 'string' && /^[a-z0-9_]+$/i.test(obj.error)) {
+      code = obj.error;
+    }
   }
-  return { ok: false, status: res.status, message };
+  return { ok: false, status: res.status, message, ...(code ? { code } : {}) };
 }
 
 export function formatPushSuccess(
@@ -264,12 +270,74 @@ export function formatPushSuccess(
     if (data.expiresAt) payload.expiresAt = data.expiresAt;
     return { stdout: JSON.stringify(payload) + '\n', stderr: '' };
   }
-  return { stdout: `${data.shareUrl}\n`, stderr: '' };
+  const lines: string[] = [];
+  lines.push(successLine(`shared  ${shareUrl(data.shareUrl)}`));
+  if (data.expiresAt) {
+    lines.push(dim(`  expires ${data.expiresAt}`));
+  }
+  return { stdout: lines.join('\n') + '\n', stderr: '' };
 }
 
-export function formatPushError(status: number, message: string): string {
-  if (status === 0) return `error: ${message}\n`;
-  return `error: ingest failed (${status}): ${message}\n`;
+/** Multi-line help when the ingest token is missing. */
+export function formatMissingTokenError(): string {
+  return errorBlock('missing ingest token', [
+    'Pass --token <token>',
+    'or set TESTED_TOKEN / TESTED_INGEST_TOKEN',
+    '',
+    'Create a token: app.tested.dev → repo → Settings → Ingest token',
+  ]);
+}
+
+/**
+ * Map HTTP / API errors to human guidance. Prefer known codes
+ * (repo_not_found, token_required) then fall back to status heuristics.
+ */
+export function formatPushError(
+  status: number,
+  message: string,
+  code?: string,
+): string {
+  if (status === 0) {
+    return errorBlock(message);
+  }
+
+  const normalized = (code ?? message).toLowerCase();
+
+  if (
+    normalized.includes('token_required') ||
+    normalized.includes('invalid token') ||
+    normalized.includes('unauthorized') ||
+    status === 401
+  ) {
+    return errorBlock('ingest auth failed', [
+      message,
+      '',
+      'Pass --token <token> or set TESTED_TOKEN / TESTED_INGEST_TOKEN',
+      'Create a token: app.tested.dev → repo → Settings → Ingest token',
+    ]);
+  }
+
+  if (
+    normalized.includes('repo_not_found') ||
+    (status === 404 && /repo/i.test(message))
+  ) {
+    return errorBlock('repo not found', [
+      message,
+      '',
+      'Check --owner / --name (or that the git remote origin is correct)',
+      'and that this repo exists on app.tested.dev',
+    ]);
+  }
+
+  if (status === 403) {
+    return errorBlock(`ingest failed (${status})`, [
+      message,
+      '',
+      'Token may lack permission for this repo.',
+    ]);
+  }
+
+  return errorBlock(`ingest failed (${status})`, [message]);
 }
 
 export interface ExecutePushDeps {
@@ -279,6 +347,8 @@ export interface ExecutePushDeps {
   fetchFn?: typeof fetch;
   openRepoFn?: (cwd: string) => Promise<GitContext>;
   loadConfigFn?: typeof loadConfig;
+  /** Progress writer (defaults to stderr). Tests may capture or no-op. */
+  onProgress?: (msg: string) => void;
 }
 
 /**
@@ -294,6 +364,11 @@ export async function executePush(
   const fetchFn = deps.fetchFn ?? globalThis.fetch;
   const openRepoFn = deps.openRepoFn ?? openRepo;
   const loadConfigFn = deps.loadConfigFn ?? loadConfig;
+  const onProgress =
+    deps.onProgress ??
+    ((msg: string) => {
+      process.stderr.write(progress(msg) + '\n');
+    });
 
   const token = resolveToken({
     ...(cli.token !== undefined ? { flag: cli.token } : {}),
@@ -303,8 +378,7 @@ export async function executePush(
     return {
       exitCode: 1,
       stdout: '',
-      stderr:
-        'error: missing ingest token. Pass --token or set TESTED_TOKEN / TESTED_INGEST_TOKEN.\n',
+      stderr: formatMissingTokenError(),
     };
   }
 
@@ -316,14 +390,16 @@ export async function executePush(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { exitCode: 1, stdout: '', stderr: `error: ${message}\n` };
+    return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
   }
   if (prNumber === null) {
     return {
       exitCode: 1,
       stdout: '',
-      stderr:
-        'error: PR number required. Pass --pr <number> or set GITHUB_PR_NUMBER (CI) / PR_NUMBER.\n',
+      stderr: errorBlock('PR number required', [
+        'Pass --pr <number>',
+        'or set GITHUB_PR_NUMBER (CI) / PR_NUMBER',
+      ]),
     };
   }
 
@@ -334,12 +410,19 @@ export async function executePush(
   const config: TestedConfig = await loadConfigFn({ cwd: deps.cwd });
   const ctx = await openRepoFn(deps.cwd);
 
-  const diff = await computeDiffFn({
-    cwd: deps.cwd,
-    config,
-    ...(cli.base !== undefined ? { baseRef: cli.base } : {}),
-    ctx,
-  });
+  onProgress('computing diff…');
+  let diff: DiffOutput;
+  try {
+    diff = await computeDiffFn({
+      cwd: deps.cwd,
+      config,
+      ...(cli.base !== undefined ? { baseRef: cli.base } : {}),
+      ctx,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
+  }
 
   let owner = cli.owner;
   let name = cli.name;
@@ -351,8 +434,9 @@ export async function executePush(
       return {
         exitCode: 1,
         stdout: '',
-        stderr:
-          'error: could not read git remote origin. Pass --owner and --name explicitly.\n',
+        stderr: errorBlock('could not read git remote origin', [
+          'Pass --owner and --name explicitly.',
+        ]),
       };
     }
     const parsed = parseGitHubRemote(origin);
@@ -360,7 +444,9 @@ export async function executePush(
       return {
         exitCode: 1,
         stdout: '',
-        stderr: `error: could not parse owner/name from remote "${origin}". Pass --owner and --name.\n`,
+        stderr: errorBlock(`could not parse owner/name from remote "${origin}"`, [
+          'Pass --owner and --name.',
+        ]),
       };
     }
     owner = owner ?? parsed.owner;
@@ -393,12 +479,13 @@ export async function executePush(
     diff,
   });
 
+  onProgress('uploading…');
   const result = await postIngest({ apiBase, token, body, fetchFn });
   if (!result.ok) {
     return {
       exitCode: 1,
       stdout: '',
-      stderr: formatPushError(result.status, result.message),
+      stderr: formatPushError(result.status, result.message, result.code),
     };
   }
 
@@ -440,10 +527,16 @@ export function registerPushCommand(program: Command): void {
     .option('--base <ref>', 'Git base ref to diff against (same as `tested diff --base`)')
     .option('--json', 'Emit machine-readable JSON instead of the share URL only', false)
     .action(async (opts: PushCliOpts) => {
-      const result = await executePush(opts, { cwd: process.cwd() });
-      if (result.stderr) process.stderr.write(result.stderr);
-      if (result.stdout) process.stdout.write(result.stdout);
-      // NB: use exitCode (not process.exit) so buffered stdout fully flushes.
-      process.exitCode = result.exitCode;
+      try {
+        const result = await executePush(opts, { cwd: process.cwd() });
+        if (result.stderr) process.stderr.write(result.stderr);
+        if (result.stdout) process.stdout.write(result.stdout);
+        // NB: use exitCode (not process.exit) so buffered stdout fully flushes.
+        process.exitCode = result.exitCode;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(errorBlock(message));
+        process.exitCode = 1;
+      }
     });
 }

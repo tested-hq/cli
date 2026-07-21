@@ -10,6 +10,7 @@ import {
   postIngest,
   formatPushSuccess,
   formatPushError,
+  formatMissingTokenError,
   executePush,
   DEFAULT_API_BASE,
   type IngestBody,
@@ -304,9 +305,21 @@ describe('postIngest', () => {
 
 describe('formatPushSuccess / formatPushError', () => {
   it('prints shareUrl in human mode', () => {
-    expect(
-      formatPushSuccess({ shareUrl: 'https://app.tested.dev/s/x' }, false).stdout,
-    ).toBe('https://app.tested.dev/s/x\n');
+    const { stdout } = formatPushSuccess(
+      { shareUrl: 'https://app.tested.dev/s/x' },
+      false,
+    );
+    expect(stdout).toContain('https://app.tested.dev/s/x');
+    expect(stdout).toMatch(/shared/);
+  });
+
+  it('prints expiresAt dim line when present in human mode', () => {
+    const { stdout } = formatPushSuccess(
+      { shareUrl: 'https://app.tested.dev/s/x', expiresAt: '2026-01-01T00:00:00Z' },
+      false,
+    );
+    expect(stdout).toContain('https://app.tested.dev/s/x');
+    expect(stdout).toContain('expires 2026-01-01T00:00:00Z');
   });
 
   it('includes expiresAt in json mode when present', () => {
@@ -320,13 +333,36 @@ describe('formatPushSuccess / formatPushError', () => {
     });
   });
 
-  it('formats HTTP errors with status', () => {
-    expect(formatPushError(403, 'forbidden')).toBe(
-      'error: ingest failed (403): forbidden\n',
-    );
-    expect(formatPushError(0, 'network error: boom')).toBe(
-      'error: network error: boom\n',
-    );
+  it('formats HTTP errors with status as multi-line blocks', () => {
+    const err403 = formatPushError(403, 'forbidden');
+    expect(err403).toMatch(/error: ingest failed \(403\)/);
+    expect(err403).toContain('forbidden');
+
+    const net = formatPushError(0, 'network error: boom');
+    expect(net).toMatch(/error: network error: boom/);
+  });
+
+  it('maps token_required / 401 to token guidance', () => {
+    const text = formatPushError(401, 'token_required', 'token_required');
+    expect(text).toMatch(/auth failed|token/i);
+    expect(text).toContain('TESTED_TOKEN');
+    expect(text).toContain('Ingest token');
+  });
+
+  it('maps repo_not_found to owner/name guidance', () => {
+    const text = formatPushError(404, 'repo_not_found', 'repo_not_found');
+    expect(text).toMatch(/repo not found/i);
+    expect(text).toContain('--owner');
+    expect(text).toContain('--name');
+  });
+
+  it('formatMissingTokenError is multi-line help', () => {
+    const text = formatMissingTokenError();
+    expect(text).toContain('missing ingest token');
+    expect(text).toContain('--token');
+    expect(text).toContain('TESTED_TOKEN');
+    expect(text).toContain('TESTED_INGEST_TOKEN');
+    expect(text).toContain('Ingest token');
   });
 });
 
@@ -334,17 +370,19 @@ describe('executePush', () => {
   it('errors clearly when token is missing', async () => {
     const result = await executePush(
       { json: false, pr: '1' },
-      { cwd: '/repo', env: {} },
+      { cwd: '/repo', env: {}, onProgress: () => {} },
     );
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toMatch(/missing ingest token/i);
     expect(result.stderr).toMatch(/TESTED_TOKEN/);
+    expect(result.stderr).toMatch(/TESTED_INGEST_TOKEN/);
+    expect(result.stderr).toContain('Pass --token');
   });
 
   it('errors clearly when PR number is missing', async () => {
     const result = await executePush(
       { json: false, token: 't' },
-      { cwd: '/repo', env: {} },
+      { cwd: '/repo', env: {}, onProgress: () => {} },
     );
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toMatch(/PR number required/i);
@@ -391,6 +429,7 @@ describe('executePush', () => {
       repoRoot: '/repo',
     };
 
+    const progress: string[] = [];
     const result = await executePush(
       {
         json: false,
@@ -405,12 +444,16 @@ describe('executePush', () => {
         fetchFn,
         openRepoFn: async () => ctx,
         loadConfigFn: async () => makeConfig(),
+        onProgress: (m) => progress.push(m),
       },
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe('https://app.tested.dev/s/xyz\n');
+    expect(result.stdout).toContain('https://app.tested.dev/s/xyz');
+    expect(result.stdout).toContain('expires 2026-09-01T00:00:00.000Z');
     expect(result.shareUrl).toBe('https://app.tested.dev/s/xyz');
+    expect(progress).toContain('computing diff…');
+    expect(progress).toContain('uploading…');
     expect(computeDiffFn).toHaveBeenCalledOnce();
     expect(postedUrl).toBe('https://app.tested.dev/api/ingest');
     expect(postedAuth).toBe('Bearer secret-token');
@@ -470,6 +513,7 @@ describe('executePush', () => {
         fetchFn: fetchFn as unknown as typeof fetch,
         openRepoFn: async () => ctx,
         loadConfigFn: async () => makeConfig(),
+        onProgress: () => {},
       },
     );
 
@@ -504,11 +548,13 @@ describe('executePush', () => {
         fetchFn: fetchFn as unknown as typeof fetch,
         openRepoFn: async () => ctx,
         loadConfigFn: async () => makeConfig(),
+        onProgress: () => {},
       },
     );
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe('error: ingest failed (429): quota exceeded\n');
+    expect(result.stderr).toMatch(/error: ingest failed \(429\)/);
+    expect(result.stderr).toContain('quota exceeded');
     expect(result.stdout).toBe('');
   });
 
@@ -540,6 +586,7 @@ describe('executePush', () => {
         fetchFn: fetchFn as unknown as typeof fetch,
         openRepoFn: async () => ctx,
         loadConfigFn: async () => makeConfig(),
+        onProgress: () => {},
       },
     );
 
@@ -579,6 +626,7 @@ describe('executePush', () => {
         fetchFn,
         openRepoFn: async () => ctx,
         loadConfigFn: async () => makeConfig(),
+        onProgress: () => {},
       },
     );
 

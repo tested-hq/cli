@@ -62,7 +62,7 @@ describe('runCheck — no thresholds configured', () => {
 });
 
 describe('runCheck — both thresholds pass', () => {
-  it('exits 0, emits two pass lines on stderr and machine summary on stdout', () => {
+  it('exits 0 with a single clear layout on stdout (no stderr duplicate)', () => {
     const result = run({
       config: makeConfig({ patch: 80, project: 60 }),
       diff: makeDiff(87.3, 64.1),
@@ -72,14 +72,17 @@ describe('runCheck — both thresholds pass', () => {
     expect(result.overall).toBe('pass');
     expect(result.patchPass).toBe(true);
     expect(result.projectPass).toBe(true);
-    // stderr human lines
-    expect(result.stderr).toContain('patch coverage 87.3% (threshold 80) — pass');
-    expect(result.stderr).toContain('project coverage 64.1% (threshold 60) — pass');
-    expect(result.stderr).toContain('✅');
-    expect(result.stderr).not.toContain('❌');
-    // stdout machine summary
-    expect(result.stdout).toContain('PATCH: 87.3% / 80% — PASS');
-    expect(result.stdout).toContain('PROJECT: 64.1% / 60% — PASS');
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('coverage gate');
+    expect(result.stdout).toContain('[PASS]');
+    expect(result.stdout).toContain('Patch');
+    expect(result.stdout).toContain('87.3%');
+    expect(result.stdout).toContain('threshold 80');
+    expect(result.stdout).toContain('Project');
+    expect(result.stdout).toContain('64.1%');
+    expect(result.stdout).toContain('threshold 60');
+    // No machine-summary duplication of FAIL/PASS lines on stderr.
+    expect(result.stdout).not.toMatch(/^PATCH:/m);
   });
 
   it('treats coverage exactly at the threshold as pass', () => {
@@ -95,7 +98,7 @@ describe('runCheck — both thresholds pass', () => {
 });
 
 describe('runCheck — patch fails, project passes', () => {
-  it('exits 1, marks patch as fail and project as pass', () => {
+  it('exits 1 with fail badge and next-action tip', () => {
     const result = run({
       config: makeConfig({ patch: 80, project: 60 }),
       diff: makeDiff(42.7, 64.1),
@@ -105,15 +108,18 @@ describe('runCheck — patch fails, project passes', () => {
     expect(result.overall).toBe('fail');
     expect(result.patchPass).toBe(false);
     expect(result.projectPass).toBe(true);
-    expect(result.stderr).toContain('❌ patch coverage 42.7% (threshold 80) — fail');
-    expect(result.stderr).toContain('✅ project coverage 64.1% (threshold 60) — pass');
-    expect(result.stdout).toContain('PATCH: 42.7% / 80% — FAIL');
-    expect(result.stdout).toContain('PROJECT: 64.1% / 60% — PASS');
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('[FAIL]');
+    expect(result.stdout).toContain('42.7%');
+    expect(result.stdout).toContain('threshold 80');
+    expect(result.stdout).toContain('64.1%');
+    expect(result.stdout).toContain('threshold 60');
+    expect(result.stdout).toContain('tested diff');
   });
 });
 
 describe('runCheck — both fail', () => {
-  it('exits 1 with two fail lines', () => {
+  it('exits 1 with overall fail', () => {
     const result = run({
       config: makeConfig({ patch: 80, project: 60 }),
       diff: makeDiff(10, 20),
@@ -123,9 +129,8 @@ describe('runCheck — both fail', () => {
     expect(result.overall).toBe('fail');
     expect(result.patchPass).toBe(false);
     expect(result.projectPass).toBe(false);
-    const failCount = (result.stderr.match(/❌/g) ?? []).length;
-    expect(failCount).toBe(2);
-    expect(result.stderr).not.toContain('✅');
+    expect(result.stdout).toContain('[FAIL]');
+    expect(result.stdout).toContain('tested diff');
   });
 });
 
@@ -175,7 +180,7 @@ describe('runCheck — number formatting', () => {
       diff: makeDiff(87.34567, 64.111),
       json: false,
     });
-    expect(result.stderr).toContain('87.3%');
-    expect(result.stderr).toContain('64.1%');
+    expect(result.stdout).toContain('87.3%');
+    expect(result.stdout).toContain('64.1%');
   });
 });

@@ -1,8 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { Command } from 'commander';
-import pc from 'picocolors';
 import { simpleGit } from 'simple-git';
+import {
+  dim,
+  errorBlock,
+  heading,
+  nextSteps,
+  successLine,
+} from '../output/ui.js';
+import pc from 'picocolors';
 
 export type TestRunner = 'vitest' | 'jest' | 'pytest';
 
@@ -164,10 +171,12 @@ export async function runInit(opts: RunInitOpts): Promise<InitResult> {
     }
   }
 
-  const nextSteps = [
-    '1. commit .tested.yaml',
-    `2. run \`tested diff --base ${detected.defaultBranch}\` to see your patch coverage`,
-    '3. wire to CI: gh workflow add tested.dev/workflows/coverage.yml',
+  // Real agent loop next steps.
+  const nextStepsList = [
+    '1. tested run',
+    '2. tested diff',
+    '3. tested push --pr <n>   (needs TESTED_TOKEN)',
+    '4. optional: wire CI (GitHub Actions / husky pre-push)',
   ];
 
   return {
@@ -176,7 +185,7 @@ export async function runInit(opts: RunInitOpts): Promise<InitResult> {
     hookInstalled,
     hookPath,
     detected,
-    nextSteps,
+    nextSteps: nextStepsList,
     warnings,
   };
 }
@@ -187,16 +196,16 @@ export function buildInitJsonOutput(result: InitResult): InitJsonOutput {
 
 export function formatInitResultHuman(result: InitResult): string {
   const lines: string[] = [];
-  lines.push(pc.bold('tested.dev — init'));
+  lines.push(heading('tested.dev — init'));
   lines.push('');
   if (result.configWritten) {
-    lines.push(`${pc.green('✓')} wrote ${pc.cyan(result.configPath)}`);
+    lines.push(successLine(`wrote ${pc.cyan(result.configPath)}`));
   }
   const runnerLabel = result.detected.testRunner ?? 'none detected';
-  lines.push(`  test runner: ${pc.cyan(runnerLabel)}`);
-  lines.push(`  base branch: ${pc.cyan(result.detected.defaultBranch)}`);
+  lines.push(dim(`  test runner: ${runnerLabel}`));
+  lines.push(dim(`  base branch: ${result.detected.defaultBranch}`));
   if (result.hookInstalled && result.hookPath) {
-    lines.push(`${pc.green('✓')} installed pre-push hook at ${pc.cyan(result.hookPath)}`);
+    lines.push(successLine(`installed pre-push hook at ${pc.cyan(result.hookPath)}`));
   }
   if (result.warnings.length > 0) {
     lines.push('');
@@ -206,10 +215,7 @@ export function formatInitResultHuman(result: InitResult): string {
   }
   if (result.nextSteps.length > 0) {
     lines.push('');
-    lines.push(pc.bold('Next steps:'));
-    for (const step of result.nextSteps) {
-      lines.push(`  ${step}`);
-    }
+    lines.push(nextSteps(result.nextSteps));
   }
   return lines.join('\n');
 }
@@ -225,7 +231,10 @@ export function registerInitCommand(program: Command): void {
       try {
         if (opts.hooks && !process.stdin.isTTY && !opts.force) {
           process.stderr.write(
-            'error: --hooks in a non-TTY environment requires --force to confirm (would install a git hook unattended)\n',
+            errorBlock(
+              '--hooks in a non-TTY environment requires --force to confirm',
+              ['Would install a git hook unattended.'],
+            ),
           );
           process.exit(1);
         }
@@ -246,7 +255,7 @@ export function registerInitCommand(program: Command): void {
             JSON.stringify({ schemaVersion: 1, error: message }, null, 2) + '\n',
           );
         } else {
-          process.stderr.write(`${pc.red('error')}: ${message}\n`);
+          process.stderr.write(errorBlock(message));
         }
         process.exit(1);
       }
