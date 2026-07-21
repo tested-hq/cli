@@ -22,3 +22,26 @@ export async function headSha(ctx: GitContext): Promise<string> {
 export async function unifiedDiff(ctx: GitContext, base: string): Promise<string> {
   return ctx.git.diff([`${base}...HEAD`]);
 }
+
+export async function remoteUrl(ctx: GitContext, remote = 'origin'): Promise<string> {
+  return (await ctx.git.raw(['remote', 'get-url', remote])).trim();
+}
+
+/** Current branch name, or empty string when detached HEAD. */
+export async function currentBranch(ctx: GitContext): Promise<string> {
+  try {
+    const name = (await ctx.git.revparse(['--abbrev-ref', 'HEAD'])).trim();
+    return name === 'HEAD' ? '' : name;
+  } catch {
+    return '';
+  }
+}
+
+export async function gitUserName(ctx: GitContext): Promise<string | null> {
+  try {
+    const name = (await ctx.git.raw(['config', 'user.name'])).trim();
+    return name || null;
+  } catch {
+    return null;
+  }
+}
