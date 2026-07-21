@@ -59,3 +59,33 @@ $ tested check --json
 ```
 
 `--json` suppresses the human stderr lines; the exit code is unchanged.
+
+## Share (`tested push`)
+
+Push local patch/project coverage to [tested.dev](https://app.tested.dev) and get a share URL back. Closes the agent loop: local coverage → cloud link.
+
+```
+$ export TESTED_TOKEN=…          # or TESTED_INGEST_TOKEN / --token
+$ export GITHUB_PR_NUMBER=42     # or --pr 42
+$ tested push
+https://app.tested.dev/s/…
+```
+
+| Flag / env | Purpose |
+|---|---|
+| `--token` / `TESTED_TOKEN` / `TESTED_INGEST_TOKEN` | Ingest auth (required) |
+| `--pr` / `GITHUB_PR_NUMBER` / `PR_NUMBER` | PR number (required) |
+| `--url` / `TESTED_API_URL` | API base (default `https://app.tested.dev`) |
+| `--owner` / `--name` | Repo identity (default: parse `origin` remote) |
+| `--pr-title`, `--author`, `--base-ref`, `--head-ref` | PR metadata overrides |
+| `--base` | Git base for the coverage diff (same as `tested diff --base`) |
+| `--run-url` | Optional CI run URL |
+| `--json` | Machine output: `{ "shareUrl", "expiresAt?" }` |
+
+Typical CI step after `tested check`:
+
+```yaml
+- run: pnpm exec tested push --pr "${{ github.event.pull_request.number }}"
+  env:
+    TESTED_TOKEN: ${{ secrets.TESTED_TOKEN }}
+```
