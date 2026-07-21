@@ -5,6 +5,7 @@ import { loadConfig } from '../config.js';
 import { openRepo } from '../git.js';
 import { parseIstanbul, type FileCoverage } from '../core/istanbul.js';
 import { assertWithinRoot } from '../core/assert-within-root.js';
+import { badge, dim, heading } from '../output/ui.js';
 
 export interface ExplainResult {
   path: string;
@@ -65,6 +66,18 @@ export function explainAt(
   };
 }
 
+export function formatExplainHuman(result: ExplainResult): string {
+  const status = result.uncovered ? badge('fail') : badge('pass');
+  const statusLabel = result.uncovered ? 'UNCOVERED' : 'covered';
+  const lines: string[] = [];
+  lines.push(heading('tested.dev — explain'));
+  lines.push(`${result.path}:${result.line}  ${status}  ${statusLabel}`);
+  lines.push(dim(result.reason));
+  lines.push('');
+  lines.push(result.codeExcerpt);
+  return lines.join('\n');
+}
+
 export function registerExplainCommand(program: Command): void {
   program
     .command('explain')
@@ -72,30 +85,34 @@ export function registerExplainCommand(program: Command): void {
     .argument('<location>', 'Location in the form path/to/file.ts:42')
     .option('--json', 'Emit JSON instead of human text', false)
     .action(async (location: string, opts: { json: boolean }) => {
-      const cwd = process.cwd();
-      const { path: relPath, line } = parseLocation(location);
-      const config = await loadConfig({ cwd });
-      const ctx = await openRepo(cwd);
-      const coveragePath = resolve(cwd, config.coverage.path);
-      assertWithinRoot(ctx.repoRoot, coveragePath);
-      const files = await parseIstanbul({ path: coveragePath, repoRoot: ctx.repoRoot });
-      const file = files.find((f) => f.path === relPath);
-      if (!file) {
-        process.stderr.write(`No coverage data for ${relPath}\n`);
-        process.exit(2);
-      }
-      const resolvedSource = resolve(ctx.repoRoot, relPath);
-      assertWithinRoot(ctx.repoRoot, resolvedSource);
-      const source = await readFile(resolvedSource, 'utf8');
-      const sourceLines = source.split('\n');
-      const result = explainAt(file, line, sourceLines);
-      if (opts.json) {
-        process.stdout.write(JSON.stringify(result, null, 2) + '\n');
-      } else {
-        process.stdout.write(
-          `${result.path}:${result.line} — ${result.uncovered ? 'UNCOVERED' : 'covered'}\n` +
-            `${result.reason}\n\n${result.codeExcerpt}\n`,
-        );
+      try {
+        const cwd = process.cwd();
+        const { path: relPath, line } = parseLocation(location);
+        const config = await loadConfig({ cwd });
+        const ctx = await openRepo(cwd);
+        const coveragePath = resolve(cwd, config.coverage.path);
+        assertWithinRoot(ctx.repoRoot, coveragePath);
+        const files = await parseIstanbul({ path: coveragePath, repoRoot: ctx.repoRoot });
+        const file = files.find((f) => f.path === relPath);
+        if (!file) {
+          process.stderr.write(`error: no coverage data for ${relPath}\n`);
+          process.exitCode = 2;
+          return;
+        }
+        const resolvedSource = resolve(ctx.repoRoot, relPath);
+        assertWithinRoot(ctx.repoRoot, resolvedSource);
+        const source = await readFile(resolvedSource, 'utf8');
+        const sourceLines = source.split('\n');
+        const result = explainAt(file, line, sourceLines);
+        if (opts.json) {
+          process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+        } else {
+          process.stdout.write(formatExplainHuman(result) + '\n');
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`error: ${message}\n`);
+        process.exitCode = 1;
       }
     });
 }

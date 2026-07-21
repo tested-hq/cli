@@ -2,6 +2,22 @@
 
 Coverage your agent can use. CLI for patch + project coverage with agent-readable JSON output.
 
+## Agent loop
+
+```
+tested init
+tested run                  # run tests with coverage
+tested diff                 # patch + project report
+tested check                # enforce thresholds (exit non-zero on fail)
+tested push --pr <n>        # share URL on app.tested.dev (needs token)
+```
+
+## Terminal UX
+
+Human output is monochrome editorial craft: restrained color via picocolors (green / yellow / red for status only). ASCII badges (`[PASS]` / `[FAIL]`) and metric bars. Honors `NO_COLOR` and non-TTY (no ornaments when color is unsupported).
+
+`--json` on every command keeps agent schemas stable.
+
 ## Dogfood
 
 This repo enforces its own coverage gate on every push via husky pre-push hook:
@@ -26,14 +42,22 @@ thresholds:
 
 ```
 $ tested check
-✅ patch coverage 87.3% (threshold 80) — pass
-✅ project coverage 64.1% (threshold 60) — pass
+tested.dev — coverage gate  [PASS]
+
+  Patch     87.3%  (threshold 80)  [PASS]
+  Project   64.1%  (threshold 60)  [PASS]
+
+thresholds met
 $ echo $?
 0
 
 $ tested check
-❌ patch coverage 42.7% (threshold 80) — fail
-✅ project coverage 64.1% (threshold 60) — pass
+tested.dev — coverage gate  [FAIL]
+
+  Patch     42.7%  (threshold 80)  [FAIL]
+  Project   64.1%  (threshold 60)  [PASS]
+
+→ add tests for uncovered ranges: tested diff
 $ echo $?
 1
 ```
@@ -47,8 +71,6 @@ If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice o
 - run: pnpm exec tested check
 ```
 
-The human-readable pass/fail lines go to **stderr**. A machine-friendly summary goes to **stdout**, so you can pipe `tested check | tee gate.txt` without losing the icons.
-
 ### `--json`
 
 For programmatic consumers:
@@ -58,7 +80,7 @@ $ tested check --json
 {"patch":{"pct":87.3,"threshold":80,"pass":true},"project":{"pct":64.1,"threshold":60,"pass":true},"overall":"pass"}
 ```
 
-`--json` suppresses the human stderr lines; the exit code is unchanged.
+`--json` suppresses the human layout; the exit code is unchanged.
 
 ## Share (`tested push`)
 
@@ -68,7 +90,8 @@ Push local patch/project coverage to [tested.dev](https://app.tested.dev) and ge
 $ export TESTED_TOKEN=…          # or TESTED_INGEST_TOKEN / --token
 $ export GITHUB_PR_NUMBER=42     # or --pr 42
 $ tested push
-https://app.tested.dev/s/…
+✓ shared  https://app.tested.dev/s/…
+  expires 2026-…
 ```
 
 | Flag / env | Purpose |

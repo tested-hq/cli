@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff } from '../core/computeDiff.js';
 import type { DiffOutput, TestedConfig } from '../schemas.js';
+import { badge, dim, heading, tip, formatCliError } from '../output/ui.js';
 
 export interface CheckInput {
   config: TestedConfig;
@@ -23,6 +24,17 @@ export interface CheckResult {
   exitCode: 0 | 1;
 }
 
+function formatMetricLine(
+  label: string,
+  pct: number,
+  threshold: number,
+  pass: boolean,
+): string {
+  const pctStr = pct.toFixed(1);
+  const status = pass ? badge('pass') : badge('fail');
+  return `  ${label.padEnd(8)}  ${pctStr}%  (threshold ${threshold})  ${status}`;
+}
+
 /**
  * Pure function: given a loaded config + a precomputed DiffOutput, decide
  * whether the gate passes and produce stdout/stderr buffers + an exit code.
@@ -39,7 +51,11 @@ export function runCheck(input: CheckInput): CheckResult {
       projectPass: true,
       overall: 'pass',
       stdout: '',
-      stderr: 'no thresholds configured in .tested.yaml — skipping gate check\n',
+      stderr:
+        `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
+        `\n` +
+        `${dim('  no thresholds in .tested.yaml — gate skipped')}\n` +
+        `${tip('add thresholds.patch / thresholds.project to enforce')}\n`,
       exitCode: 0,
     };
   }
@@ -49,14 +65,22 @@ export function runCheck(input: CheckInput): CheckResult {
   const patchThreshold = config.thresholds.patch;
   const projectThreshold = config.thresholds.project;
 
-  const patchPass = patchPct >= patchThreshold;
+  // Empty patch (0 executable lines) is not a gate failure — nothing changed
+  // that can be covered. Agents and humans both hit this on main-only SHAs.
+  const patchSkipped = diff.patch.executable === 0;
+  const patchPass = patchSkipped ? true : patchPct >= patchThreshold;
   const projectPass = projectPct >= projectThreshold;
   const overall: 'pass' | 'fail' = patchPass && projectPass ? 'pass' : 'fail';
   const exitCode: 0 | 1 = overall === 'pass' ? 0 : 1;
 
   if (json) {
     const payload = {
-      patch: { pct: patchPct, threshold: patchThreshold, pass: patchPass },
+      patch: {
+        pct: patchPct,
+        threshold: patchThreshold,
+        pass: patchPass,
+        ...(patchSkipped ? { skipped: true as const } : {}),
+      },
       project: { pct: projectPct, threshold: projectThreshold, pass: projectPass },
       overall,
     };
@@ -71,27 +95,36 @@ export function runCheck(input: CheckInput): CheckResult {
     };
   }
 
-  const patchIcon = patchPass ? '✅' : '❌';
-  const projectIcon = projectPass ? '✅' : '❌';
-  const patchLabel = patchPass ? 'pass' : 'fail';
-  const projectLabel = projectPass ? 'pass' : 'fail';
-  const patchPctStr = patchPct.toFixed(1);
-  const projectPctStr = projectPct.toFixed(1);
-
-  const stderr =
-    `${patchIcon} patch coverage ${patchPctStr}% (threshold ${patchThreshold}) — ${patchLabel}\n` +
-    `${projectIcon} project coverage ${projectPctStr}% (threshold ${projectThreshold}) — ${projectLabel}\n`;
-  const stdout =
-    `PATCH: ${patchPctStr}% / ${patchThreshold}% — ${patchLabel.toUpperCase()}\n` +
-    `PROJECT: ${projectPctStr}% / ${projectThreshold}% — ${projectLabel.toUpperCase()}\n`;
+  // Single clear layout on stdout (no duplicate FAIL on stderr).
+  const lines: string[] = [];
+  lines.push(
+    `${heading('tested.dev — coverage gate')}  ${overall === 'pass' ? badge('pass') : badge('fail')}`,
+  );
+  lines.push('');
+  if (patchSkipped) {
+    lines.push(
+      `  ${'Patch'.padEnd(8)}  ${dim('-')}  ${dim('(no executable lines — skipped)')}  ${badge('info')}`,
+    );
+  } else {
+    lines.push(formatMetricLine('Patch', patchPct, patchThreshold, patchPass));
+  }
+  lines.push(formatMetricLine('Project', projectPct, projectThreshold, projectPass));
+  if (overall === 'fail') {
+    lines.push('');
+    lines.push(tip('add tests for uncovered ranges: tested diff'));
+  } else {
+    lines.push('');
+    lines.push(dim(patchSkipped ? 'project thresholds met (patch skipped)' : 'thresholds met'));
+  }
+  lines.push('');
 
   return {
     skipped: false,
     patchPass,
     projectPass,
     overall,
-    stdout,
-    stderr,
+    stdout: lines.join('\n'),
+    stderr: '',
     exitCode,
   };
 }
@@ -105,41 +138,47 @@ export function registerCheckCommand(program: Command): void {
     .option('--json', 'Emit machine-readable JSON to stdout (exit code unchanged).', false)
     .option('--base <ref>', 'Git base ref to diff against', undefined)
     .action(async (opts: { json: boolean; base?: string }) => {
-      const cwd = process.cwd();
-      const config = await loadConfig({ cwd });
+      try {
+        const cwd = process.cwd();
+        const config = await loadConfig({ cwd });
 
-      // Short-circuit before we spend time on git/coverage parsing when there's
-      // nothing to enforce.
-      if (!config.thresholds) {
-        const result = runCheck({
+        // Short-circuit before we spend time on git/coverage parsing when there's
+        // nothing to enforce.
+        if (!config.thresholds) {
+          const result = runCheck({
+            config,
+            // diff value is unused in the skip path; pass a stub.
+            diff: {
+              schemaVersion: 1,
+              base: '',
+              head: '',
+              patch: { executable: 0, covered: 0, pct: 0 },
+              project: { executable: 0, covered: 0, pct: 0, delta: null },
+              files: [],
+              ignored: [],
+            },
+            json: opts.json,
+          });
+          if (result.stderr) process.stderr.write(result.stderr);
+          if (result.stdout) process.stdout.write(result.stdout);
+          process.exitCode = result.exitCode;
+          return;
+        }
+
+        const diff = await computeDiff({
+          cwd,
           config,
-          // diff value is unused in the skip path; pass a stub.
-          diff: {
-            schemaVersion: 1,
-            base: '',
-            head: '',
-            patch: { executable: 0, covered: 0, pct: 0 },
-            project: { executable: 0, covered: 0, pct: 0, delta: null },
-            files: [],
-            ignored: [],
-          },
-          json: opts.json,
+          ...(opts.base !== undefined ? { baseRef: opts.base } : {}),
         });
+        const result = runCheck({ config, diff, json: opts.json });
         if (result.stderr) process.stderr.write(result.stderr);
         if (result.stdout) process.stdout.write(result.stdout);
+        // NB: use exitCode (not process.exit) so buffered stdout fully flushes.
         process.exitCode = result.exitCode;
-        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(formatCliError(message));
+        process.exitCode = 1;
       }
-
-      const diff = await computeDiff({
-        cwd,
-        config,
-        ...(opts.base !== undefined ? { baseRef: opts.base } : {}),
-      });
-      const result = runCheck({ config, diff, json: opts.json });
-      if (result.stderr) process.stderr.write(result.stderr);
-      if (result.stdout) process.stdout.write(result.stdout);
-      // NB: use exitCode (not process.exit) so buffered stdout fully flushes.
-      process.exitCode = result.exitCode;
     });
 }

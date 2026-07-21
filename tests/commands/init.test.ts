@@ -101,11 +101,18 @@ describe('formatInitResultHuman', () => {
       hookInstalled: true,
       hookPath: '/repo/.husky/pre-push',
       detected: { hasPackageJson: true, testRunner: 'vitest', defaultBranch: 'main' },
-      nextSteps: ['1. commit .tested.yaml'],
+      nextSteps: [
+        '1. tested run',
+        '2. tested diff',
+        '3. tested push --pr <n>   (needs TESTED_TOKEN)',
+        '4. optional: wire CI (GitHub Actions / husky pre-push)',
+      ],
       warnings: [],
     });
     expect(text).toContain('.tested.yaml');
-    expect(text).toContain('1. commit .tested.yaml');
+    expect(text).toContain('tested run');
+    expect(text).toContain('tested diff');
+    expect(text).toContain('tested push --pr');
     expect(text).toContain('vitest');
   });
   it('surfaces warnings', () => {
@@ -141,6 +148,10 @@ describe('runInit', () => {
     const parsed = parseYaml(readFileSync(join(dir, '.tested.yaml'), 'utf8'));
     expect(parsed.testRunner).toBe('vitest');
     expect(parsed.base).toBe('main');
+    // Agent loop next steps
+    expect(result.nextSteps.join('\n')).toMatch(/tested run/);
+    expect(result.nextSteps.join('\n')).toMatch(/tested diff/);
+    expect(result.nextSteps.join('\n')).toMatch(/tested push --pr/);
     rmSync(dir, { recursive: true, force: true });
   });
 
