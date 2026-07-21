@@ -3,32 +3,83 @@
 One loop. Same signal for humans, agents, and CI.
 
 ```
-tested init
+tested setup          # init + doctor + CI snippet + token help
 tested run
 tested diff
 tested check          # optional gate
 tested push --pr <n>  # share on app.tested.dev
 ```
 
-## 1. Install
+Or step by step: `tested init` → `tested doctor` → run / diff / check / push.
+
+## 1. Install (git — not on npm)
+
+`@tested/cli` is **private** and is **not** published to the npm registry.
+Install from GitHub and build:
 
 ```bash
-# from this monorepo / package
-pnpm install && pnpm build
-# binary: dist/tested.js  (or link: pnpm link --global)
+# pin a branch
+pnpm add -D github:tested-hq/cli#main
+
+# pin a commit SHA (recommended for apps / CI)
+pnpm add -D github:tested-hq/cli#<full-commit-sha>
+
+cd node_modules/@tested/cli && pnpm install && pnpm build
+# binary: node_modules/@tested/cli/dist/tested.js
+# optional: ln -s "$(pwd)/dist/tested.js" /usr/local/bin/tested
 ```
 
-Node ≥ 22.
+From this monorepo / package checkout:
 
-## 2. Init a repo
+```bash
+pnpm install && pnpm build
+# binary: dist/tested.js  (or: pnpm link --global)
+```
+
+Node ≥ 22 (GitHub Action defaults to Node **24**).
+
+## 2. Setup (recommended first command)
 
 ```bash
 cd your-project
+tested setup
+# writes .tested.yaml if missing
+# runs doctor (node, git, config, coverage, origin, token, API URL, TESTED_BIN)
+# prints CI snippet + token instructions
+```
+
+Flags: `--force` re-inits config; `--hooks` installs husky pre-push; `--json` for agents.
+
+### Doctor only
+
+```bash
+tested doctor
+tested doctor --json
+```
+
+Checks (badges `[PASS]` / `[FAIL]` / `[WARN]` / `[INFO]`):
+
+| Check | Required | Notes |
+|-------|----------|--------|
+| Node.js ≥ 22 | yes | |
+| Git repository | yes | |
+| `.tested.yaml` | yes | `tested setup` / `tested init` |
+| Coverage file | warn | default `coverage/coverage-final.json` — run `tested run` |
+| `origin` remote | yes | needed for push owner/name |
+| Ingest token | warn | `TESTED_TOKEN` / `TESTED_INGEST_TOKEN` / `TESTED_TOKEN_FILE` — **never printed** |
+| `TESTED_API_URL` | if set | must be `https://` (or http localhost) |
+| `TESTED_BIN` basename | if set | must match `/^tested(\.js)?$/` |
+
+Exit **0** when required checks pass; **1** on hard failures (or unsafe API URL / bad `TESTED_BIN`).
+
+## 3. Init only (if you skip setup)
+
+```bash
 tested init --force
 # writes .tested.yaml  (vitest/jest/pytest, thresholds, ignores)
 ```
 
-## 3. Local coverage
+## 4. Local coverage
 
 ```bash
 tested run              # runs testRunner with coverage → coverage/coverage-final.json
@@ -39,7 +90,7 @@ tested check            # exit 1 if below thresholds
 
 **Empty patch** (no new executable lines): patch gate is **skipped**; project still applies.
 
-## 4. Push to tested.dev (share URL)
+## 5. Push to tested.dev (share URL)
 
 Prereqs on **app.tested.dev**:
 
@@ -70,17 +121,50 @@ Useful flags:
 
 Errors are guided (missing token, repo not found, bad token).
 
-## 5. CI (minimal)
+## 6. CI — composite Action
+
+Use the composite action under [`action/`](../action/) (see [action/README.md](../action/README.md)).
 
 ```yaml
-- run: pnpm test -- --coverage   # or: tested run
+# .github/workflows/tested.yml
+name: tested
+on: [pull_request]
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test -- --coverage
+      - uses: tested-hq/cli/action@main
+        with:
+          cli-ref: main          # pin a commit SHA in production
+          push: true
+          pr-number: ${{ github.event.pull_request.number }}
+          token: ${{ secrets.TESTED_TOKEN }}
+```
+
+What the action does:
+
+1. `actions/setup-node` **24**
+2. Install CLI from **git** (`cli-ref`) or **local path** (`cli-path`)
+3. `pnpm install && pnpm build` → `dist/tested.js`
+4. `tested check` (optional `--base`)
+5. Optional `tested push` when `push: true`
+
+Manual minimal gate (if CLI already on PATH):
+
+```yaml
+- run: pnpm test -- --coverage
 - run: tested check
 - run: tested push --pr ${{ github.event.pull_request.number }}
   env:
     TESTED_TOKEN: ${{ secrets.TESTED_TOKEN }}
 ```
 
-## 6. Agents (MCP)
+## 7. Agents (MCP)
 
 ```json
 {
@@ -103,9 +187,10 @@ All need `cwd` + existing `coverage/coverage-final.json` (run `tested run` first
 
 **Security:** only trusted repo cwds. For always-on MCP hosts set
 `TESTED_ALLOWED_CWDS`. Optional `TESTED_BIN_ALLOW_PREFIX` (colon-separated)
-restricts which realpaths may be used as the CLI binary.
+restricts which realpaths may be used as the CLI binary. `tested doctor` flags
+a bad `TESTED_BIN` basename.
 
-## 7. Safe `tested run` in CI
+## 8. Safe `tested run` in CI
 
 `tested run` forwards extra args to the runner. In CI / non-interactive mode /
 with `TESTED_SAFE_RUN=1` it rejects `--watch` / `--watchAll` and `--config`
@@ -117,13 +202,16 @@ paths outside the repository root.
 |---------|--------|
 | CLI human | monochrome report + gate |
 | CLI `--json` | DiffOutput schema-v1 |
+| `tested doctor` / `setup` | environment checklist + first-run guidance |
 | `tested push` | public share page (gate + files + ranges) |
 | MCP | same coverage math for agents |
 | App dashboard | signed-in PR view (GitHub App) |
+| GitHub Action | `tested-hq/cli/action` composite |
 
 ## DX principles
 
-- **One loop** — run → diff → check → push  
+- **One loop** — setup → run → diff → check → push  
 - **Minimal chrome** — status color only; `NO_COLOR` respected  
 - **Errors teach** — next command, not a stack dump  
 - **Agents first** — stable JSON; exit codes mean gate  
+- **Git-pinned installs** — no npm publish; pin commit SHAs in CI  
