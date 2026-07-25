@@ -31,6 +31,8 @@ export interface PushCliOpts {
   runUrl?: string;
   base?: string;
   json: boolean;
+  /** Default-branch coverage only (no PR / share URL). */
+  mainline?: boolean;
 }
 
 export interface IngestRepo {
@@ -51,14 +53,20 @@ export interface IngestPr {
 
 export interface IngestBody {
   repo: IngestRepo;
-  pr: IngestPr;
+  pr?: IngestPr;
   runUrl: string | null;
   diff: DiffOutput;
+  ref?: string;
+  isDefaultBranch?: boolean;
+  headSha?: string;
 }
 
 export interface IngestSuccess {
-  shareUrl: string;
+  shareUrl?: string;
   expiresAt?: string;
+  mainline?: boolean;
+  date?: string;
+  projectPct?: number;
 }
 
 export interface PushResult {
@@ -336,6 +344,30 @@ export function buildIngestBody(input: {
   };
 }
 
+
+export function buildMainlineIngestBody(input: {
+  owner: string;
+  name: string;
+  defaultBranch: string;
+  headSha: string;
+  ref: string;
+  runUrl: string | null;
+  diff: DiffOutput;
+}): IngestBody {
+  return {
+    repo: {
+      owner: input.owner,
+      name: input.name,
+      defaultBranch: input.defaultBranch,
+    },
+    runUrl: input.runUrl,
+    diff: input.diff,
+    ref: input.ref,
+    isDefaultBranch: true,
+    headSha: input.headSha,
+  };
+}
+
 export async function postIngest(opts: {
   apiBase: string;
   token: string;
@@ -386,7 +418,25 @@ export async function postIngest(opts: {
 
   if (res.status === 200) {
     const data = parsed as Partial<IngestSuccess> | null;
-    if (!data || typeof data.shareUrl !== 'string' || !data.shareUrl) {
+    if (!data) {
+      return {
+        ok: false,
+        status: res.status,
+        message: 'ingest succeeded but response was empty',
+      };
+    }
+    if (data.mainline === true) {
+      return {
+        ok: true,
+        status: res.status,
+        data: {
+          mainline: true,
+          ...(typeof data.date === 'string' ? { date: data.date } : {}),
+          ...(typeof data.projectPct === 'number' ? { projectPct: data.projectPct } : {}),
+        },
+      };
+    }
+    if (typeof data.shareUrl !== 'string' || !data.shareUrl) {
       return {
         ok: false,
         status: res.status,
@@ -422,11 +472,28 @@ export function formatPushSuccess(
   json: boolean,
 ): { stdout: string; stderr: string } {
   if (json) {
-    const payload: Record<string, string> = { shareUrl: data.shareUrl };
+    const payload: Record<string, string | number | boolean> = {};
+    if (data.shareUrl) payload.shareUrl = data.shareUrl;
     if (data.expiresAt) payload.expiresAt = data.expiresAt;
+    if (data.mainline) payload.mainline = true;
+    if (data.date) payload.date = data.date;
+    if (typeof data.projectPct === 'number') payload.projectPct = data.projectPct;
     return { stdout: JSON.stringify(payload) + '\n', stderr: '' };
   }
   const lines: string[] = [];
+  if (data.mainline) {
+    lines.push(
+      successLine(
+        `mainline coverage recorded` +
+          (typeof data.projectPct === 'number' ? `  ${data.projectPct.toFixed(1)}%` : '') +
+          (data.date ? `  ${data.date}` : ''),
+      ),
+    );
+    return { stdout: lines.join('\n') + '\n', stderr: '' };
+  }
+  if (!data.shareUrl) {
+    return { stdout: successLine('uploaded') + '\n', stderr: '' };
+  }
   lines.push(successLine(`shared  ${shareUrl(data.shareUrl)}`));
   if (data.expiresAt) {
     lines.push(dim(`  expires ${data.expiresAt}`));
@@ -549,13 +616,15 @@ export async function executePush(
     const message = err instanceof Error ? err.message : String(err);
     return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
   }
-  if (prNumber === null) {
+  const mainline = Boolean(cli.mainline);
+  if (prNumber === null && !mainline) {
     return {
       exitCode: 1,
       stdout: '',
       stderr: errorBlock('PR number required', [
         'Pass --pr <number>',
         'or set GITHUB_PR_NUMBER (CI) / PR_NUMBER',
+        'or pass --mainline for default-branch coverage (no share URL)',
       ]),
     };
   }
@@ -630,20 +699,30 @@ export async function executePush(
     author = sanitizeAuthor(gitName ?? env.USER ?? env.USERNAME ?? 'unknown');
   }
 
-  const body = buildIngestBody({
-    owner,
-    name,
-    baseRef,
-    prNumber,
-    prTitle,
-    author,
-    headRef,
-    headSha: sha,
-    runUrl: cli.runUrl ?? null,
-    diff,
-  });
+  const body = mainline
+    ? buildMainlineIngestBody({
+        owner,
+        name,
+        defaultBranch: baseRef,
+        headSha: sha,
+        ref: `refs/heads/${baseRef}`,
+        runUrl: cli.runUrl ?? null,
+        diff,
+      })
+    : buildIngestBody({
+        owner,
+        name,
+        baseRef,
+        prNumber: prNumber as number,
+        prTitle,
+        author,
+        headRef,
+        headSha: sha,
+        runUrl: cli.runUrl ?? null,
+        diff,
+      });
 
-  onProgress('uploading…');
+  onProgress(mainline ? 'uploading mainline coverage…' : 'uploading…');
   const result = await postIngest({ apiBase, token, body, fetchFn });
   if (!result.ok) {
     return {
@@ -658,7 +737,7 @@ export async function executePush(
     exitCode: 0,
     stdout: formatted.stdout,
     stderr: formatted.stderr,
-    shareUrl: result.data.shareUrl,
+    ...(result.data.shareUrl !== undefined ? { shareUrl: result.data.shareUrl } : {}),
     ...(result.data.expiresAt !== undefined
       ? { expiresAt: result.data.expiresAt }
       : {}),
@@ -680,6 +759,11 @@ export function registerPushCommand(program: Command): void {
     .option('--owner <owner>', 'Repo owner (default: detect from git remote origin)')
     .option('--name <name>', 'Repo name (default: detect from git remote origin)')
     .option('--pr <number>', 'PR number (or env GITHUB_PR_NUMBER / PR_NUMBER)')
+    .option(
+      '--mainline',
+      'Upload default-branch project coverage only (no PR / no share URL)',
+      false,
+    )
     .option('--pr-title <title>', 'PR title (default: current branch or "coverage push")')
     .option(
       '--author <login>',

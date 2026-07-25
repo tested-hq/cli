@@ -1,5 +1,5 @@
 name: 'tested'
-description: 'Run tested.dev coverage gate (check) and optionally push a share URL'
+description: 'Run tested.dev coverage gate (check) and optionally push a share URL or mainline coverage'
 author: 'tested-hq'
 
 branding:
@@ -28,7 +28,7 @@ inputs:
     required: false
     default: '.'
   base:
-    description: 'Git base ref for tested check (optional).'
+    description: 'Git base ref for tested check (optional). Prefer PR base SHA for Δ vs base.'
     required: false
     default: ''
   push:
@@ -36,9 +36,15 @@ inputs:
     required: false
     default: 'false'
   pr-number:
-    description: 'PR number for tested push (or set GITHUB_PR_NUMBER).'
+    description: 'PR number for tested push (or set GITHUB_PR_NUMBER). Not required with mainline=true.'
     required: false
     default: ''
+  mainline:
+    description: >
+      If true, push default-branch project coverage only (isDefaultBranch).
+      Use on push to main/master. Does not create a share URL.
+    required: false
+    default: 'false'
   token:
     description: 'Ingest token (TESTED_TOKEN). Prefer secrets.TESTED_TOKEN.'
     required: false
@@ -82,7 +88,6 @@ runs:
           REF="${{ inputs.cli-ref }}"
           REPO="${{ inputs.cli-repository }}"
           rm -rf "$DEST"
-          # Prefer branch/tag shallow clone; fall back for full commit SHAs.
           if git clone --depth 1 --branch "$REF" "https://github.com/${REPO}.git" "$DEST" 2>/dev/null; then
             :
           else
@@ -141,16 +146,29 @@ runs:
           echo "push=true requires token input or TESTED_TOKEN" >&2
           exit 1
         fi
+        EXTRA_URL=()
+        if [ -n "${TESTED_API_URL:-}" ]; then
+          EXTRA_URL=(--url "$TESTED_API_URL")
+        fi
+        MAINLINE="${{ inputs.mainline }}"
+        # Auto-mainline on push to default branch when not a PR event
+        if [ "$MAINLINE" != "true" ] && [ "${{ github.event_name }}" = "push" ]; then
+          DEF="${{ github.event.repository.default_branch }}"
+          REF="${{ github.ref_name }}"
+          if [ -n "$DEF" ] && [ "$REF" = "$DEF" ]; then
+            MAINLINE=true
+          fi
+        fi
+        if [ "$MAINLINE" = "true" ]; then
+          node "$BIN" push --mainline "${EXTRA_URL[@]}"
+          exit 0
+        fi
         PR="${GITHUB_PR_NUMBER:-}"
         if [ -z "$PR" ]; then
           PR="${{ github.event.pull_request.number }}"
         fi
         if [ -z "$PR" ] || [ "$PR" = "" ]; then
-          echo "push=true requires pr-number or a pull_request event" >&2
+          echo "push=true requires pr-number, a pull_request event, or mainline=true / push to default branch" >&2
           exit 1
-        fi
-        EXTRA_URL=()
-        if [ -n "${TESTED_API_URL:-}" ]; then
-          EXTRA_URL=(--url "$TESTED_API_URL")
         fi
         node "$BIN" push --pr "$PR" "${EXTRA_URL[@]}"
