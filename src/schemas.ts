@@ -60,3 +60,10 @@ export const DiffOutputSchema = z.object({
 export type DiffOutput = z.infer<typeof DiffOutputSchema>;
 export type FileCoverage = z.infer<typeof FileCoverageSchema>;
 export type UncoveredRange = z.infer<typeof UncoveredRangeSchema>;
+
+// Re-export test analytics schema (JUnit → optional ingest field)
+export {
+  TestReportSchema,
+  type TestReport,
+  type TestCaseRef,
+} from './core/junit.js';

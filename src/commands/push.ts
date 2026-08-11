@@ -1,4 +1,5 @@
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff } from '../core/computeDiff.js';
@@ -11,6 +12,8 @@ import {
   type GitContext,
 } from '../git.js';
 import type { DiffOutput, TestedConfig } from '../schemas.js';
+import type { TestReport } from '../core/junit.js';
+import { parseJunitToTestReport } from '../core/junit.js';
 import { dim, errorBlock, progress, shareUrl, successLine } from '../output/ui.js';
 
 export const DEFAULT_API_BASE = 'https://app.tested.dev';
@@ -33,6 +36,8 @@ export interface PushCliOpts {
   json: boolean;
   /** Default-branch coverage only (no PR / share URL). */
   mainline?: boolean;
+  /** Path to JUnit XML for test analytics (flakes / slowest). */
+  junit?: string;
 }
 
 export interface IngestRepo {
@@ -59,6 +64,8 @@ export interface IngestBody {
   ref?: string;
   isDefaultBranch?: boolean;
   headSha?: string;
+  /** Optional JUnit-derived analytics (schemaVersion 1). */
+  testReport?: TestReport;
 }
 
 export interface IngestSuccess {
@@ -322,6 +329,7 @@ export function buildIngestBody(input: {
   headSha: string;
   runUrl: string | null;
   diff: DiffOutput;
+  testReport?: TestReport;
 }): IngestBody {
   const baseRefName = toBranchName(input.baseRef);
   return {
@@ -341,6 +349,7 @@ export function buildIngestBody(input: {
     },
     runUrl: input.runUrl,
     diff: input.diff,
+    ...(input.testReport ? { testReport: input.testReport } : {}),
   };
 }
 
@@ -353,6 +362,7 @@ export function buildMainlineIngestBody(input: {
   ref: string;
   runUrl: string | null;
   diff: DiffOutput;
+  testReport?: TestReport;
 }): IngestBody {
   return {
     repo: {
@@ -365,7 +375,58 @@ export function buildMainlineIngestBody(input: {
     ref: input.ref,
     isDefaultBranch: true,
     headSha: input.headSha,
+    ...(input.testReport ? { testReport: input.testReport } : {}),
   };
+}
+
+const DEFAULT_JUNIT_CANDIDATES = [
+  'junit.xml',
+  'test-results/junit.xml',
+  'coverage/junit.xml',
+  'reports/junit.xml',
+];
+
+/**
+ * Resolve JUnit XML path: --junit flag, TESTED_JUNIT env, then common paths.
+ * Returns null if none found (analytics optional).
+ */
+export function resolveJunitPath(opts: {
+  flag?: string;
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+  existsSyncFn?: typeof existsSync;
+}): string | null {
+  const env = opts.env ?? process.env;
+  const exists = opts.existsSyncFn ?? existsSync;
+  if (opts.flag && opts.flag.trim()) {
+    const p = opts.flag.trim();
+    const abs = p.startsWith('/') ? p : join(opts.cwd, p);
+    if (!exists(abs)) {
+      throw new Error(`JUnit file not found: ${p}`);
+    }
+    return abs;
+  }
+  const fromEnv = env.TESTED_JUNIT?.trim();
+  if (fromEnv) {
+    const abs = fromEnv.startsWith('/') ? fromEnv : join(opts.cwd, fromEnv);
+    if (!exists(abs)) {
+      throw new Error(`TESTED_JUNIT file not found: ${fromEnv}`);
+    }
+    return abs;
+  }
+  for (const rel of DEFAULT_JUNIT_CANDIDATES) {
+    const abs = join(opts.cwd, rel);
+    if (exists(abs)) return abs;
+  }
+  return null;
+}
+
+export function loadTestReportFromJunit(
+  path: string,
+  readFn: typeof readFileSync = readFileSync,
+): TestReport {
+  const xml = readFn(path, 'utf8');
+  return parseJunitToTestReport(xml);
 }
 
 export async function postIngest(opts: {
@@ -699,6 +760,22 @@ export async function executePush(
     author = sanitizeAuthor(gitName ?? env.USER ?? env.USERNAME ?? 'unknown');
   }
 
+  let testReport: TestReport | undefined;
+  try {
+    const junitPath = resolveJunitPath({
+      ...(cli.junit !== undefined ? { flag: cli.junit } : {}),
+      cwd: deps.cwd,
+      env,
+    });
+    if (junitPath) {
+      onProgress('parsing JUnit…');
+      testReport = loadTestReportFromJunit(junitPath);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
+  }
+
   const body = mainline
     ? buildMainlineIngestBody({
         owner,
@@ -708,6 +785,7 @@ export async function executePush(
         ref: `refs/heads/${baseRef}`,
         runUrl: cli.runUrl ?? null,
         diff,
+        ...(testReport ? { testReport } : {}),
       })
     : buildIngestBody({
         owner,
@@ -720,6 +798,7 @@ export async function executePush(
         headSha: sha,
         runUrl: cli.runUrl ?? null,
         diff,
+        ...(testReport ? { testReport } : {}),
       });
 
   onProgress(mainline ? 'uploading mainline coverage…' : 'uploading…');
@@ -776,6 +855,10 @@ export function registerPushCommand(program: Command): void {
     .option('--head-ref <ref>', 'Head branch name (default: current branch)')
     .option('--run-url <url>', 'Optional CI run URL attached to the ingest')
     .option('--base <ref>', 'Git base ref to diff against (same as `tested diff --base`)')
+    .option(
+      '--junit <path>',
+      'JUnit XML for test analytics (flakes / slowest). Also TESTED_JUNIT or junit.xml',
+    )
     .option('--json', 'Emit machine-readable JSON instead of the share URL only', false)
     .action(async (opts: PushCliOpts) => {
       try {

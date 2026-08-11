@@ -53,6 +53,12 @@ inputs:
     description: 'Optional TESTED_API_URL override.'
     required: false
     default: ''
+  junit:
+    description: >-
+      Path to JUnit XML for test analytics (flakes / slowest). Also auto-detects
+      junit.xml under the working directory. Sets TESTED_JUNIT for tested push.
+    required: false
+    default: ''
   node-version:
     description: 'Node.js version for the CLI (setup-node).'
     required: false
@@ -139,6 +145,7 @@ runs:
         TESTED_TOKEN: ${{ inputs.token }}
         TESTED_API_URL: ${{ inputs.api-url }}
         GITHUB_PR_NUMBER: ${{ inputs.pr-number }}
+        TESTED_JUNIT: ${{ inputs.junit }}
       run: |
         set -euo pipefail
         BIN="${TESTED_BIN:-tested}"
@@ -150,6 +157,10 @@ runs:
         if [ -n "${TESTED_API_URL:-}" ]; then
           EXTRA_URL=(--url "$TESTED_API_URL")
         fi
+        EXTRA_JUNIT=()
+        if [ -n "${TESTED_JUNIT:-}" ]; then
+          EXTRA_JUNIT=(--junit "$TESTED_JUNIT")
+        fi
         MAINLINE="${{ inputs.mainline }}"
         # Auto-mainline on push to default branch when not a PR event
         if [ "$MAINLINE" != "true" ] && [ "${{ github.event_name }}" = "push" ]; then
@@ -160,7 +171,7 @@ runs:
           fi
         fi
         if [ "$MAINLINE" = "true" ]; then
-          node "$BIN" push --mainline "${EXTRA_URL[@]}"
+          node "$BIN" push --mainline "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"
           exit 0
         fi
         PR="${GITHUB_PR_NUMBER:-}"
@@ -171,4 +182,4 @@ runs:
           echo "push=true requires pr-number, a pull_request event, or mainline=true / push to default branch" >&2
           exit 1
         fi
-        node "$BIN" push --pr "$PR" "${EXTRA_URL[@]}"
+        node "$BIN" push --pr "$PR" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"
