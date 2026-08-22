@@ -794,6 +794,6 @@ describe('executePush', () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(posted?.pr.number).toBe(55);
+    expect(posted?.pr?.number).toBe(55);
   });
 });
