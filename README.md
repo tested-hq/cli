@@ -5,12 +5,23 @@ Coverage your agent can use. CLI for patch + project coverage with agent-readabl
 **→ [Getting started (simple path)](docs/GETTING-STARTED.md)**  
 **→ [GitHub Action](action/README.md)** (`action/action.yml` composite)
 
-## Install (git — not on npm)
+## Install (git, HTTPS; not on npm)
+
+`@tested/cli` is private. It is not on the public npm registry.
 
 ```bash
-pnpm add -D github:tested-hq/cli#main
-# pin a commit in production: github:tested-hq/cli#<full-sha>
-cd node_modules/@tested/cli && pnpm install && pnpm build
+# HTTPS. The github: shorthand uses git+ssh and fails on hosts without ssh.
+pnpm add -D git+https://github.com/tested-hq/cli.git#main
+# pin a commit in production:
+# pnpm add -D git+https://github.com/tested-hq/cli.git#<full-sha>
+```
+
+`prepare` builds `dist/tested.js`. No `cd node_modules/@tested/cli && pnpm build` step.
+
+If git rewrites HTTPS to SSH (`url.*.insteadOf`), check:
+
+```bash
+git config --show-origin --get-regexp 'url\..*insteadOf'
 ```
 
 ## First 10 minutes
@@ -18,7 +29,9 @@ cd node_modules/@tested/cli && pnpm install && pnpm build
 ```
 tested setup            # init + doctor + CI snippet + token help
 tested doctor           # environment checklist (exit 0/1)
-tested run && tested diff && tested check
+tested run              # writes coverage even if tests fail
+tested diff             # report (exit 0)
+tested check            # gate (exit 1 if under threshold)
 tested push --pr <n>    # needs TESTED_TOKEN
 ```
 
@@ -40,8 +53,8 @@ tested push --pr <n>    # needs TESTED_TOKEN
 
 ```
 tested setup                # init + doctor + CI / token guidance
-tested run                  # run tests with coverage
-tested diff                 # patch + project report
+tested run                  # run tests with coverage (writes coverage even if tests fail)
+tested diff                 # patch + project report (exit 0; not the gate)
 tested check                # enforce thresholds (exit non-zero on fail)
 tested push --pr <n>        # share URL on app.tested.dev (needs token)
 ```
@@ -66,7 +79,7 @@ The hook runs `tested run && tested diff` against the upstream branch (or `HEAD~
 
 ## Gating
 
-`tested check` enforces the `thresholds` block in `.tested.yaml` and exits non-zero when patch or project coverage falls below the configured floor. Use it as a single-line CI gate.
+`tested diff` is a report (exit 0) even when coverage is under the yaml threshold. `tested check` is the gate: it enforces the `thresholds` block in `.tested.yaml` and exits non-zero when patch or project coverage falls below the configured floor.
 
 ```yaml
 thresholds:

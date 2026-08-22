@@ -15,6 +15,7 @@ import type { DiffOutput, TestedConfig } from '../schemas.js';
 import type { TestReport } from '../core/junit.js';
 import { parseJunitToTestReport } from '../core/junit.js';
 import { dim, errorBlock, progress, shareUrl, successLine } from '../output/ui.js';
+import { tokenMintGuidance } from '../token-help.js';
 
 export const DEFAULT_API_BASE = 'https://app.tested.dev';
 
@@ -563,13 +564,13 @@ export function formatPushSuccess(
 }
 
 /** Multi-line help when the ingest token is missing. */
-export function formatMissingTokenError(): string {
+export function formatMissingTokenError(opts?: {
+  owner?: string | null;
+  name?: string | null;
+}): string {
   return errorBlock('missing ingest token', [
-    'Set TESTED_TOKEN / TESTED_INGEST_TOKEN (preferred)',
-    'or TESTED_TOKEN_FILE=/path/to/token (mode 600)',
-    'or pass --token <token> (avoid on shared hosts — visible in ps)',
-    '',
-    'Create a token: app.tested.dev → repo → Settings → Ingest token',
+    ...tokenMintGuidance(opts),
+    'or pass --token <token> (avoid on shared hosts: visible in ps)',
   ]);
 }
 
@@ -597,8 +598,8 @@ export function formatPushError(
     return errorBlock('ingest auth failed', [
       message,
       '',
-      'Set TESTED_TOKEN / TESTED_INGEST_TOKEN / TESTED_TOKEN_FILE, or --token',
-      'Create a token: app.tested.dev → repo → Settings → Ingest token',
+      ...tokenMintGuidance(),
+      'or --token',
     ]);
   }
 
@@ -660,10 +661,25 @@ export async function executePush(
     env,
   });
   if (!token) {
+    let owner = cli.owner ?? null;
+    let name = cli.name ?? null;
+    if (!owner || !name) {
+      try {
+        const ctx = await openRepoFn(deps.cwd);
+        const origin = await remoteUrl(ctx, 'origin');
+        const parsed = parseGitHubRemote(origin);
+        if (parsed) {
+          owner = owner ?? parsed.owner;
+          name = name ?? parsed.name;
+        }
+      } catch {
+        // Keep the URL shape when origin is unavailable.
+      }
+    }
     return {
       exitCode: 1,
       stdout: '',
-      stderr: formatMissingTokenError(),
+      stderr: formatMissingTokenError({ owner, name }),
     };
   }
 

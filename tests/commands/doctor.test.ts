@@ -71,7 +71,26 @@ describe('runDoctor', () => {
     expect(token?.detail).not.toContain('secret');
   });
 
-  it('fails on old Node', async () => {
+  it('warns on Node 20 instead of hard-failing (binary already ran)', async () => {
+    const result = await runDoctor({
+      cwd: '/repo',
+      nodeVersion: 'v20.19.2',
+      env: {},
+      existsSyncFn: (() => true) as typeof import('node:fs').existsSync,
+      gitFactory: mockGit({}) as never,
+      loadConfigFn: async () => makeConfig(),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.ok).toBe(true);
+    const node = result.checks.find((c) => c.id === 'node');
+    expect(node?.status).toBe('warn');
+    expect(node?.optional).toBe(true);
+    expect(node?.detail).toMatch(/20\.19\.2/);
+    expect(node?.detail).toMatch(/recommended/i);
+    expect(node?.detail).not.toMatch(/—/);
+  });
+
+  it('warns on older Node (v18) without failing the doctor exit', async () => {
     const result = await runDoctor({
       cwd: '/repo',
       nodeVersion: 'v18.0.0',
@@ -80,8 +99,8 @@ describe('runDoctor', () => {
       gitFactory: mockGit({}) as never,
       loadConfigFn: async () => makeConfig(),
     });
-    expect(result.exitCode).toBe(1);
-    expect(result.checks.find((c) => c.id === 'node')?.status).toBe('fail');
+    expect(result.exitCode).toBe(0);
+    expect(result.checks.find((c) => c.id === 'node')?.status).toBe('warn');
   });
 
   it('fails when not a git repo', async () => {
@@ -154,7 +173,14 @@ describe('runDoctor', () => {
       loadConfigFn: async () => makeConfig(),
     });
     expect(result.exitCode).toBe(0);
-    expect(result.checks.find((c) => c.id === 'token')?.status).toBe('warn');
+    const token = result.checks.find((c) => c.id === 'token');
+    expect(token?.status).toBe('warn');
+    expect(token?.detail).toContain(
+      'https://app.tested.dev/repos/acme/demo/settings',
+    );
+    expect(token?.detail).toMatch(/TESTED_TOKEN/);
+    expect(token?.detail).toMatch(/TESTED_TOKEN_FILE/);
+    expect(token?.detail).toMatch(/TESTED_INGEST_TOKEN/);
   });
 
   it('validates TESTED_API_URL when set', async () => {

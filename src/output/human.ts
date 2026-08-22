@@ -117,6 +117,14 @@ export function formatHuman(out: DiffOutput, opts: FormatHumanOpts = {}): string
     lines.push(
       `  ${'Gate'.padEnd(8)}  ${overall ? badge('pass') : badge('fail')}${detail}`,
     );
+    if (!overall) {
+      lines.push('');
+      lines.push(
+        tip(
+          `tested check would FAIL (${details.join('; ')}). Diff exits 0; check is the gate.`,
+        ),
+      );
+    }
   }
 
   if (out.files.length > 0) {
@@ -150,14 +158,7 @@ export function formatHuman(out: DiffOutput, opts: FormatHumanOpts = {}): string
 
   if (tips) {
     lines.push('');
-    if (opts.thresholds) {
-      const patchPass =
-        out.patch.executable === 0 || out.patch.pct >= opts.thresholds.patch;
-      const projectPass = out.project.pct >= opts.thresholds.project;
-      if (!(patchPass && projectPass)) {
-        lines.push(tip('tested check   (enforce thresholds)'));
-      }
-    } else {
+    if (!opts.thresholds) {
       lines.push(tip('tested check   (enforce thresholds)'));
     }
     lines.push(tip('tested push --pr <n>   (share on tested.dev)'));

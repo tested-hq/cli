@@ -18,9 +18,17 @@ export function resolveRunCommand(opts: {
   const runner: TestRunner = opts.runner ?? 'vitest';
   switch (runner) {
     case 'vitest':
+      // reportOnFailure: Vitest default is false, so a failing suite writes
+      // no coverage/coverage-final.json and tested diff then errors missing file.
       return {
         command: 'npx',
-        args: ['vitest', 'run', '--coverage', ...opts.extraArgs],
+        args: [
+          'vitest',
+          'run',
+          '--coverage',
+          '--coverage.reportOnFailure',
+          ...opts.extraArgs,
+        ],
       };
     case 'jest':
       return {
