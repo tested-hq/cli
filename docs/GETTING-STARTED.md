@@ -66,7 +66,7 @@ Checks (badges `[PASS]` / `[FAIL]` / `[WARN]` / `[INFO]`):
 
 | Check | Required | Notes |
 |-------|----------|--------|
-| Node.js | warn if &lt; 22 | CLI runs on Node 20; 22+ recommended. Not a hard fail. |
+| Node.js | warn below 22 | CLI runs on Node 20; 22+ recommended. Not a hard fail. |
 | Git repository | yes | |
 | `.tested.yaml` | yes | `tested setup` / `tested init` |
 | Coverage file | warn | default `coverage/coverage-final.json` — run `tested run` |

@@ -1,5 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,13 +23,12 @@ function writeFailingSuite(dir: string): void {
   writeFileSync(
     join(dir, 'vitest.config.ts'),
     [
-      "import { defineConfig } from 'vitest/config';",
-      'export default defineConfig({',
+      'export default {',
       '  test: {',
       "    include: ['*.test.ts'],",
       "    coverage: { provider: 'v8', reporter: ['json'], reportsDirectory: './coverage' },",
       '  },',
-      '});',
+      '};',
       '',
     ].join('\n'),
   );
@@ -37,17 +42,19 @@ function writeFailingSuite(dir: string): void {
       '',
     ].join('\n'),
   );
+  symlinkSync(join(repoRoot, 'node_modules'), join(dir, 'node_modules'));
 }
 
 function runVitest(dir: string, args: string[]): ReturnType<typeof spawnSync> {
   return spawnSync(vitestBin, args, {
     cwd: dir,
     encoding: 'utf8',
-    env: {
-      ...process.env,
-      NODE_PATH: join(repoRoot, 'node_modules'),
-    },
+    env: { ...process.env },
   });
+}
+
+function output(result: ReturnType<typeof spawnSync>): string {
+  return `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
 }
 
 describe('vitest coverage on test failure', () => {
@@ -56,6 +63,7 @@ describe('vitest coverage on test failure', () => {
     try {
       writeFailingSuite(dir);
       const result = runVitest(dir, ['run', '--coverage']);
+      expect(output(result)).toMatch(/fails/);
       expect(result.status).not.toBe(0);
       expect(existsSync(join(dir, 'coverage', 'coverage-final.json'))).toBe(
         false,
@@ -72,6 +80,7 @@ describe('vitest coverage on test failure', () => {
       const resolved = resolveRunCommand({ runner: 'vitest', extraArgs: [] });
       expect(resolved.args).toContain('--coverage.reportOnFailure');
       const result = runVitest(dir, resolved.args.slice(1));
+      expect(output(result)).toMatch(/fails/);
       expect(result.status).not.toBe(0);
       expect(existsSync(join(dir, 'coverage', 'coverage-final.json'))).toBe(
         true,
