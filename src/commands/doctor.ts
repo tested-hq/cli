@@ -322,7 +322,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
         id: 'token',
         label: 'Ingest token',
         status: 'warn',
-        detail: `not set. ${tokenMintGuidance({ owner: originOwner, name: originName }).join(' ')}`,
+        detail: `not set. ${tokenMintGuidance({ owner: originOwner, name: originName }).join('. ')}`,
         optional: true,
       });
     }
