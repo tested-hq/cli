@@ -474,7 +474,9 @@ describe('formatPushSuccess / formatPushError', () => {
     const text = formatPushError(401, 'token_required', 'token_required');
     expect(text).toMatch(/auth failed|token/i);
     expect(text).toContain('TESTED_TOKEN');
-    expect(text).toContain('Ingest token');
+    expect(text).toContain(
+      'https://app.tested.dev/repos/{owner}/{name}/settings',
+    );
   });
 
   it('maps repo_not_found to owner/name guidance', () => {
@@ -489,8 +491,16 @@ describe('formatPushSuccess / formatPushError', () => {
     expect(text).toContain('missing ingest token');
     expect(text).toContain('--token');
     expect(text).toContain('TESTED_TOKEN');
+    expect(text).toContain('TESTED_TOKEN_FILE');
     expect(text).toContain('TESTED_INGEST_TOKEN');
-    expect(text).toContain('Ingest token');
+    expect(text).toContain(
+      'https://app.tested.dev/repos/{owner}/{name}/settings',
+    );
+  });
+
+  it('formatMissingTokenError fills owner/name when known', () => {
+    const text = formatMissingTokenError({ owner: 'acme', name: 'demo' });
+    expect(text).toContain('https://app.tested.dev/repos/acme/demo/settings');
   });
 });
 
@@ -505,6 +515,20 @@ describe('executePush', () => {
     expect(result.stderr).toMatch(/TESTED_TOKEN/);
     expect(result.stderr).toMatch(/TESTED_INGEST_TOKEN/);
     expect(result.stderr).toMatch(/TESTED_TOKEN_FILE|--token/);
+    expect(result.stderr).toContain(
+      'https://app.tested.dev/repos/{owner}/{name}/settings',
+    );
+  });
+
+  it('missing token names the mint URL when owner/name are known', async () => {
+    const result = await executePush(
+      { json: false, pr: '1', owner: 'acme', name: 'demo' },
+      { cwd: '/repo', env: {}, onProgress: () => {} },
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      'https://app.tested.dev/repos/acme/demo/settings',
+    );
   });
 
   it('rejects unsafe --url before contacting the network', async () => {
@@ -770,6 +794,6 @@ describe('executePush', () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(posted?.pr.number).toBe(55);
+    expect(posted?.pr?.number).toBe(55);
   });
 });

@@ -40,6 +40,8 @@ describe('formatHuman', () => {
     expect(text).toContain('Gate');
     expect(text).toContain('[FAIL]');
     expect(text).toMatch(/patch 60\.0% < 80%/);
+    expect(text).toMatch(/tested check would FAIL/);
+    expect(text).toMatch(/Diff exits 0; check is the gate/);
   });
 
   it('shows PASS gate when both thresholds are met', () => {

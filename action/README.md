@@ -68,13 +68,11 @@ jobs:
 ## Install CLI outside Actions
 
 ```bash
-# pin branch
-pnpm add -D github:tested-hq/cli#main
+# HTTPS. github:tested-hq/cli uses git+ssh and fails without ssh.
+pnpm add -D git+https://github.com/tested-hq/cli.git#main
 # pin commit (recommended)
-pnpm add -D github:tested-hq/cli#<full-sha>
-
-cd node_modules/@tested/cli && pnpm install && pnpm build
-# binary: node_modules/@tested/cli/dist/tested.js
+pnpm add -D git+https://github.com/tested-hq/cli.git#<full-sha>
+# prepare builds dist/tested.js
 ```
 
 Do **not** `npm publish`. The package is private; git is the distribution channel.
@@ -86,7 +84,7 @@ Do **not** `npm publish`. The package is private; git is the distribution channe
    `.tested.yaml`) **before** this action runs — e.g. `pnpm test -- --coverage`
    or `tested run`.
 3. For `push: true`, store an ingest token as `secrets.TESTED_TOKEN`
-   (app.tested.dev → repo → Settings → Ingest token).
+   (mint at `https://app.tested.dev/repos/{owner}/{name}/settings`).
 
 ## Security
 

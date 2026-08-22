@@ -9,7 +9,7 @@ describe('resolveRunCommand', () => {
   it('uses npx vitest with --coverage by default', () => {
     expect(resolveRunCommand({ runner: null, extraArgs: [] })).toEqual({
       command: 'npx',
-      args: ['vitest', 'run', '--coverage'],
+      args: ['vitest', 'run', '--coverage', '--coverage.reportOnFailure'],
     });
   });
 
@@ -25,6 +25,7 @@ describe('resolveRunCommand', () => {
         'vitest',
         'run',
         '--coverage',
+        '--coverage.reportOnFailure',
         'src/auth.test.ts',
         '--reporter=verbose',
       ],
@@ -35,7 +36,10 @@ describe('resolveRunCommand', () => {
 describe('resolveRunCommand with runner param', () => {
   it('dispatches vitest correctly', () => {
     const r = resolveRunCommand({ runner: 'vitest', extraArgs: [] });
-    expect(r).toEqual({ command: 'npx', args: ['vitest', 'run', '--coverage'] });
+    expect(r).toEqual({
+      command: 'npx',
+      args: ['vitest', 'run', '--coverage', '--coverage.reportOnFailure'],
+    });
   });
 
   it('dispatches jest correctly', () => {

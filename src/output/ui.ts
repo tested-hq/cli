@@ -1,4 +1,5 @@
 import pc from 'picocolors';
+import { tokenMintGuidance } from '../token-help.js';
 
 export type BadgeKind = 'pass' | 'fail' | 'warn' | 'info';
 
@@ -114,10 +115,8 @@ export function formatCliError(message: string): string {
 
   if (/missing ingest token/i.test(m)) {
     return errorBlock('missing ingest token', [
-      'Pass --token <token>',
-      'or set TESTED_TOKEN / TESTED_INGEST_TOKEN',
-      '',
-      'Create a token: app.tested.dev → repo → Settings → Ingest token',
+      ...tokenMintGuidance(),
+      'or pass --token <token> (avoid on shared hosts: visible in ps)',
     ]);
   }
 

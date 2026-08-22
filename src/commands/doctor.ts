@@ -6,12 +6,13 @@ import { loadConfig } from '../config.js';
 import {
   assertSafeApiBase,
   DEFAULT_API_BASE,
+  parseGitHubRemote,
   resolveToken,
 } from './push.js';
+import { tokenMintGuidance } from '../token-help.js';
 import {
   badge,
   dim,
-  errorBlock,
   formatCliError,
   heading,
   tip,
@@ -143,21 +144,24 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
 
   const checks: DoctorCheck[] = [];
 
-  // 1. Node version (engines.node >= 22)
+  // 1. Node version. The process is already running, so < 22 is a warn
+  // (Jorge's dogfood: Node 20.19.2 ran tested diff / check). Do not hard-fail.
   const major = parseNodeMajor(nodeVersion);
+  const nodeDisplay = nodeVersion.replace(/^v/, 'v');
   if (major !== null && major >= 22) {
     checks.push({
       id: 'node',
       label: 'Node.js',
       status: 'pass',
-      detail: `${nodeVersion.replace(/^v/, 'v')} (>= 22)`,
+      detail: `${nodeDisplay} (>= 20.19; 22+ recommended)`,
     });
   } else {
     checks.push({
       id: 'node',
       label: 'Node.js',
-      status: 'fail',
-      detail: `${nodeVersion} — need Node >= 22`,
+      status: 'warn',
+      detail: `${nodeDisplay} runs this CLI. Node >= 22 recommended.`,
+      optional: true,
     });
   }
 
@@ -234,12 +238,19 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
   }
 
   // 5. origin remote
+  let originOwner: string | null = null;
+  let originName: string | null = null;
   if (isRepo) {
     try {
       const git = gitFactory({ baseDir: cwd });
       const url = (await git.raw(['remote', 'get-url', 'origin'])).trim();
       if (url) {
-        // Redact credentials if any — never print tokens.
+        const parsed = parseGitHubRemote(url);
+        if (parsed) {
+          originOwner = parsed.owner;
+          originName = parsed.name;
+        }
+        // Redact credentials if any. Never print tokens.
         const safe = url.replace(/\/\/([^/@\s]+)@/g, '//***@');
         checks.push({
           id: 'origin',
@@ -311,7 +322,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
         id: 'token',
         label: 'Ingest token',
         status: 'warn',
-        detail: 'not set — needed for tested push (TESTED_TOKEN or TESTED_TOKEN_FILE)',
+        detail: `not set. ${tokenMintGuidance({ owner: originOwner, name: originName }).join('. ')}`,
         optional: true,
       });
     }
@@ -392,7 +403,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
   // Fail exit when any non-optional check is fail, OR when optional checks that
   // are hard-fails for safety (token file error, bad API URL, bad TESTED_BIN)
   // are fail. Coverage/token-missing stay warn (optional).
-  const hardFailIds = new Set(['node', 'git', 'config', 'origin']);
+  const hardFailIds = new Set(['git', 'config', 'origin']);
   const safetyFailIds = new Set(['api_url', 'tested_bin', 'token']);
   const hasHardFail = checks.some(
     (c) => c.status === 'fail' && hardFailIds.has(c.id),

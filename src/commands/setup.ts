@@ -16,9 +16,13 @@ import {
   tip,
 } from '../output/ui.js';
 import pc from 'picocolors';
+import {
+  INGEST_TOKEN_ENV_NAMES,
+  INGEST_TOKEN_SETTINGS_URL_SHAPE,
+} from '../token-help.js';
 
-/** Pinned git install for consumers (not published to npm). */
-export const PINNED_CLI_GIT = 'github:tested-hq/cli#main';
+/** Pinned git install for consumers (not published to npm). HTTPS, not SSH. */
+export const PINNED_CLI_GIT = 'git+https://github.com/tested-hq/cli.git#main';
 
 /** CI snippet printed by `tested setup`. */
 export function buildCiSnippet(): string {
@@ -46,22 +50,22 @@ export function buildCiSnippet(): string {
 export function buildTokenInstructions(): string {
   return [
     'Ingest token (for tested push):',
-    '  1. Open app.tested.dev → install GitHub App → open the repo',
-    '  2. Settings → Ingest token → copy once',
-    '  3. export TESTED_TOKEN=…          # preferred',
-    '     # or: export TESTED_TOKEN_FILE=$HOME/.config/tested/token  # chmod 600',
+    `  Mint: ${INGEST_TOKEN_SETTINGS_URL_SHAPE}`,
+    `  Then set ${INGEST_TOKEN_ENV_NAMES.join(' / ')}`,
     '  Never commit the token. Prefer env / file over --token (visible in ps).',
   ].join('\n');
 }
 
 export function buildGitInstallInstructions(): string {
   return [
-    'Install CLI from git (not on npm):',
+    'Install CLI from git (not on npm). Use HTTPS; github: uses SSH:',
     `  pnpm add -D ${PINNED_CLI_GIT}`,
-    '  # or pin a commit SHA:',
-    '  # pnpm add -D github:tested-hq/cli#<commit-sha>',
-    '  cd node_modules/@tested/cli && pnpm install && pnpm build',
-    '  # binary: node_modules/@tested/cli/dist/tested.js',
+    '  # pin a commit SHA:',
+    '  # pnpm add -D git+https://github.com/tested-hq/cli.git#<commit-sha>',
+    '  prepare builds dist/tested.js (no cd node_modules build step).',
+    '',
+    '  If git rewrites HTTPS to SSH (url.*.insteadOf), hosts without ssh fail.',
+    '  Check: git config --show-origin --get-regexp "url\\..*insteadOf"',
     '',
     '  # monorepo / local path:',
     '  pnpm install && pnpm build   # from a clone of tested-hq/cli',

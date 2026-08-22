@@ -45,14 +45,19 @@ describe('buildCiSnippet / token / git install', () => {
     const text = buildTokenInstructions();
     expect(text).toMatch(/TESTED_TOKEN/);
     expect(text).toMatch(/TESTED_TOKEN_FILE/);
+    expect(text).toMatch(/TESTED_INGEST_TOKEN/);
+    expect(text).toContain(
+      'https://app.tested.dev/repos/{owner}/{name}/settings',
+    );
     expect(text).not.toMatch(/sk_live|ghp_/);
   });
 
-  it('pins git install instructions', () => {
+  it('pins git HTTPS install instructions', () => {
     const text = buildGitInstallInstructions();
     expect(text).toContain(PINNED_CLI_GIT);
-    expect(text).toContain('github:tested-hq/cli#');
-    expect(text).toMatch(/pnpm build/);
+    expect(text).toContain('git+https://github.com/tested-hq/cli.git');
+    expect(text).toMatch(/prepare builds/);
+    expect(text).toMatch(/github: uses SSH|github:.*SSH/i);
     expect(text.toLowerCase()).not.toMatch(/npm publish/);
   });
 });
