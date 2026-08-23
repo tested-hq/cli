@@ -18,6 +18,8 @@ import {
   formatPushError,
   formatMissingTokenError,
   executePush,
+  fetchGitHubPullBase,
+  resolvePrPushBase,
   DEFAULT_API_BASE,
   type IngestBody,
 } from '../../src/commands/push.js';
@@ -542,6 +544,15 @@ describe('formatPushSuccess / formatPushError', () => {
     );
   });
 
+  it('auth-fail mint URL uses owner/name when provided', () => {
+    const text = formatPushError(401, 'invalid credentials', undefined, {
+      owner: 'tested-hq',
+      name: 'cli',
+    });
+    expect(text).toContain('https://app.tested.dev/repos/tested-hq/cli/settings');
+    expect(text).not.toContain('{owner}/{name}');
+  });
+
   it('maps repo_not_found to owner/name guidance', () => {
     const text = formatPushError(404, 'repo_not_found', 'repo_not_found');
     expect(text).toMatch(/repo not found/i);
@@ -795,6 +806,45 @@ describe('executePush', () => {
     expect(result.stdout).toBe('');
   });
 
+  it('auth-fail mint URL includes owner/name from flags', async () => {
+    const computeDiffFn = vi.fn(async () => makeDiff());
+    const fetchFn = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: 'invalid credentials' }), {
+          status: 401,
+        }),
+    );
+    const ctx: GitContext = {
+      git: {
+        raw: async () => 'git@github.com:other/repo.git\n',
+        revparse: async (args: string[]) =>
+          args[0] === 'HEAD' ? 'sha\n' : 'branch\n',
+      } as unknown as GitContext['git'],
+      repoRoot: '/repo',
+    };
+
+    const result = await executePush(
+      { json: false, token: 't', pr: '17', owner: 'tested-hq', name: 'cli' },
+      {
+        cwd: '/repo',
+        env: {},
+        computeDiffFn: computeDiffFn as unknown as typeof import('../../src/core/computeDiff.js').computeDiff,
+        fetchFn: fetchFn as unknown as typeof fetch,
+        openRepoFn: async () => ctx,
+        loadConfigFn: async () => makeConfig(),
+        onProgress: () => {},
+      },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/ingest auth failed/);
+    expect(result.stderr).toContain('invalid credentials');
+    expect(result.stderr).toContain(
+      'https://app.tested.dev/repos/tested-hq/cli/settings',
+    );
+    expect(result.stderr).not.toContain('{owner}/{name}');
+  });
+
   it('passes --base through to computeDiff', async () => {
     const computeDiffFn = vi.fn(async () => makeDiff());
     const fetchFn = vi.fn(
@@ -1012,6 +1062,147 @@ describe('executePush', () => {
     expect(result.exitCode).toBe(0);
     expect(posted?.pr?.headRef).toBe('coverage push');
     expect(posted?.pr?.authorLogin).toBe('ci-user');
+  });
+});
+
+describe('fetchGitHubPullBase / resolvePrPushBase', () => {
+  const prSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+  it('reads base.sha from a GitHub pull payload', async () => {
+    const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe('https://api.github.com/repos/tested-hq/cli/pulls/17');
+      expect(init?.method).toBe('GET');
+      expect(init?.redirect).toBe('manual');
+      return new Response(JSON.stringify({ base: { ref: 'main', sha: prSha } }), {
+        status: 200,
+      });
+    });
+    const got = await fetchGitHubPullBase({
+      owner: 'tested-hq',
+      name: 'cli',
+      prNumber: 17,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      env: {},
+    });
+    expect(got).toEqual({ ref: 'main', sha: prSha });
+  });
+
+  it('returns null on 404 / malformed payloads / unsafe slugs', async () => {
+    expect(
+      await fetchGitHubPullBase({
+        owner: 'tested-hq',
+        name: 'cli',
+        prNumber: 17,
+        fetchFn: (async () =>
+          new Response('{}', { status: 404 })) as unknown as typeof fetch,
+        env: {},
+      }),
+    ).toBeNull();
+    expect(
+      await fetchGitHubPullBase({
+        owner: 'tested-hq',
+        name: 'cli',
+        prNumber: 17,
+        fetchFn: (async () =>
+          new Response(JSON.stringify({ shareUrl: 'x' }), {
+            status: 200,
+          })) as unknown as typeof fetch,
+        env: {},
+      }),
+    ).toBeNull();
+    expect(
+      await fetchGitHubPullBase({
+        owner: 'acme/evil',
+        name: 'cli',
+        prNumber: 17,
+        fetchFn: (async () => {
+          throw new Error('must not fetch unsafe owner');
+        }) as unknown as typeof fetch,
+        env: {},
+      }),
+    ).toBeNull();
+  });
+
+  it('uses origin/<base> when local main is missing', async () => {
+    const ctx: GitContext = {
+      git: {
+        revparse: async (args: string[]) => {
+          if (args[0] === 'origin/main') return `${prSha}\n`;
+          throw new Error(`missing ${args[0]}`);
+        },
+        raw: async () => {
+          throw new Error('fetch should not run when origin/main exists');
+        },
+      } as unknown as GitContext['git'],
+      repoRoot: '/repo',
+    };
+    const resolved = await resolvePrPushBase({
+      ctx,
+      requested: 'main',
+      prNumber: 17,
+      owner: 'acme',
+      name: 'demo',
+      env: {},
+      fetchFn: (async () => {
+        throw new Error('GitHub API should not run when origin/main exists');
+      }) as unknown as typeof fetch,
+    });
+    expect(resolved).toBe('origin/main');
+  });
+
+  it('uses a GitHub PR base SHA when local main is missing', async () => {
+    const known = new Set([prSha]);
+    const ctx: GitContext = {
+      git: {
+        revparse: async (args: string[]) => {
+          const ref = args[0] ?? '';
+          if (known.has(ref)) return `${ref}\n`;
+          throw new Error(`missing ${ref}`);
+        },
+        raw: async () => {
+          throw new Error('fetch should not be needed when the SHA is local');
+        },
+      } as unknown as GitContext['git'],
+      repoRoot: '/repo',
+    };
+    const resolved = await resolvePrPushBase({
+      ctx,
+      requested: 'main',
+      prNumber: 17,
+      owner: 'tested-hq',
+      name: 'cli',
+      env: {},
+      fetchFn: (async () =>
+        new Response(JSON.stringify({ base: { ref: 'main', sha: prSha } }), {
+          status: 200,
+        })) as unknown as typeof fetch,
+    });
+    expect(resolved).toBe(prSha);
+  });
+
+  it('returns undefined when no local, origin, API, or fetch base exists', async () => {
+    const ctx: GitContext = {
+      git: {
+        revparse: async () => {
+          throw new Error('missing');
+        },
+        raw: async () => {
+          throw new Error('no origin');
+        },
+      } as unknown as GitContext['git'],
+      repoRoot: '/repo',
+    };
+    const resolved = await resolvePrPushBase({
+      ctx,
+      requested: 'main',
+      prNumber: 17,
+      owner: 'acme',
+      name: 'demo',
+      env: {},
+      fetchFn: (async () =>
+        new Response('{"message":"Not Found"}', { status: 404 })) as unknown as typeof fetch,
+    });
+    expect(resolved).toBeUndefined();
   });
 });
 

@@ -5,7 +5,7 @@
 #   CLI_PATH         local checkout (wins)
 #   CLI_REF          optional git ref — fallback clone
 #   CLI_REPOSITORY   owner/name for git fallback (default tested-hq/cli)
-#   CLI_VERSION      npm version (default 0.1.6)
+#   CLI_VERSION      npm version (default 0.1.7)
 #   ACTION_PATH      github.action_path (clone dest + bin shim)
 #
 # Priority: cli-path > cli-ref (if set) > npm @tested/cli@$CLI_VERSION
@@ -15,7 +15,7 @@ set -euo pipefail
 
 PKG='@tested/cli'
 REPO_DEFAULT='tested-hq/cli'
-VERSION_DEFAULT='0.1.6'
+VERSION_DEFAULT='0.1.7'
 
 SAFE_VERSION_RE='^[A-Za-z0-9._~+^-]{1,64}$'
 SAFE_REPO_RE='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
@@ -98,6 +98,9 @@ put_tested_on_path() {
     echo "error: missing ${tested_js}" >&2
     return 1
   fi
+  # cli-path=. yields ./dist/tested.js. A symlink of that relative path
+  # from $ACTION_PATH/.bin points at .bin/dist/tested.js (missing).
+  tested_js="$(cd "$(dirname "$tested_js")" && pwd)/$(basename "$tested_js")"
   chmod +x "$tested_js" || true
   local bin_dir
   if [ -n "$ACTION_PATH" ]; then
@@ -106,7 +109,10 @@ put_tested_on_path() {
     bin_dir="$(dirname "$tested_js")/.bin"
   fi
   mkdir -p "$bin_dir"
-  ln -sfn "$tested_js" "${bin_dir}/tested"
+  # Wrapper, not a symlink: tsup output may lack a shebang, and the
+  # target must stay valid when cwd is the consumer repo.
+  printf '#!/usr/bin/env bash\nexec node %q "$@"\n' "$tested_js" > "${bin_dir}/tested"
+  chmod +x "${bin_dir}/tested"
   add_path "$bin_dir"
   if ! command -v tested >/dev/null 2>&1; then
     echo "error: tested not on PATH after linking ${tested_js}" >&2
@@ -116,8 +122,10 @@ put_tested_on_path() {
 
 build_from_dir() {
   local dir="$1"
+  local abs
+  abs="$(cd "$dir" && pwd)"
   (
-    cd "$dir"
+    cd "$abs"
     if ! command -v pnpm >/dev/null 2>&1; then
       corepack enable
       corepack prepare pnpm@11.3.0 --activate
@@ -126,7 +134,7 @@ build_from_dir() {
     pnpm build
     test -f dist/tested.js
   )
-  put_tested_on_path "${dir}/dist/tested.js"
+  put_tested_on_path "${abs}/dist/tested.js"
 }
 
 clone_cli() {

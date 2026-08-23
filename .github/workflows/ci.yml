@@ -34,13 +34,36 @@ jobs:
 
       - run: pnpm typecheck
 
-      - run: pnpm test
+      - run: pnpm test:coverage
 
       - run: pnpm build
 
-      - name: dogfood — tested diff against base
+      - uses: actions/upload-artifact@v4
         if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: node dist/tested.js diff --base "origin/$BASE_REF" --format json | tee tested-output.json
-        continue-on-error: true
+        with:
+          name: coverage-final
+          path: coverage/coverage-final.json
+
+  # Separate from typecheck/test/build so an unpublished npm version or
+  # Action install glitch cannot fail unit CI. Check is the gate; push
+  # is continue-on-error inside the Action.
+  tested:
+    name: tested check + hobby push
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-final
+          path: coverage
+
+      - uses: ./action
+        with:
+          version: '0.1.7'
+          cli-path: .
+          push: 'true'
+          pr-number: ${{ github.event.pull_request.number }}
+          token: ${{ secrets.TESTED_TOKEN }}

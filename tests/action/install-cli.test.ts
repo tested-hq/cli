@@ -158,12 +158,47 @@ describe('install-cli.sh path shim', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('puts tested on PATH when --link is a relative ./dist/tested.js', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'tested-install-rel-'));
+    const actionDir = mkdtempSync(join(tmpdir(), 'tested-install-action-'));
+    try {
+      mkdirSync(join(repo, 'dist'));
+      writeFileSync(
+        join(repo, 'dist/tested.js'),
+        '#!/usr/bin/env node\nconsole.log("ok");\n',
+      );
+      chmodSync(join(repo, 'dist/tested.js'), 0o755);
+      const githubPath = join(actionDir, 'github-path');
+      writeFileSync(githubPath, '');
+
+      const result = spawnSync('bash', [script, '--link', './dist/tested.js'], {
+        cwd: repo,
+        env: {
+          ...process.env,
+          ACTION_PATH: actionDir,
+          GITHUB_PATH: githubPath,
+        },
+        encoding: 'utf8',
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).not.toMatch(/not on PATH/);
+      expect(readFileSync(githubPath, 'utf8')).toContain(`${actionDir}/.bin`);
+
+      const run = spawnSync(join(actionDir, '.bin/tested'), { encoding: 'utf8' });
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout).toContain('ok');
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+      rmSync(actionDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('action.yml install wiring', () => {
   it('installs from npm by default and keeps cli-path / resolve-check-base', () => {
     const yml = readFileSync(actionYml, 'utf8');
-    expect(yml).toMatch(/default: '0\.1\.6'/);
+    expect(yml).toMatch(/default: '0\.1\.7'/);
     expect(yml).not.toContain('TESTED_API_URL: ${{ inputs.api-url }}');
     expect(yml).toContain('INPUT_API_URL: ${{ inputs.api-url }}');
     expect(yml).toContain('install-cli.sh');

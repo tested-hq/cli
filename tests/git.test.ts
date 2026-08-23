@@ -12,6 +12,9 @@ import {
   remoteUrl,
   resolveBase,
   resolveEffectiveBase,
+  fetchOriginRef,
+  resolveAfterFetch,
+  tryRevparse,
   unifiedDiff,
 } from '../src/git.js';
 
@@ -146,6 +149,38 @@ describe('git helpers', () => {
     await expect(resolveBase(ctx, 'origin/main')).rejects.toThrow(
       missingGitRefMessage('origin/main'),
     );
+  });
+
+  it('fetchOriginRef + resolveAfterFetch recover origin/main from a shallow feature clone', async () => {
+    const serverDir = await mkdtemp(join(tmpdir(), 'tested-git-fetch-server-'));
+    const shallowDir = await mkdtemp(join(tmpdir(), 'tested-git-fetch-shallow-'));
+    try {
+      const server = simpleGit({ baseDir: serverDir });
+      await server.init(['-b', 'main']);
+      await server.addConfig('user.email', 'test@tested.dev');
+      await server.addConfig('user.name', 'Test');
+      await writeFile(join(serverDir, 'app.ts'), 'export const a = 1;\n');
+      await server.add('.');
+      await server.commit('base', { '--no-verify': null });
+      const mainSha = (await server.revparse(['HEAD'])).trim();
+      await server.checkoutLocalBranch('feature');
+      await writeFile(join(serverDir, 'app.ts'), 'export const a = 1;\nexport const b = 2;\n');
+      await server.add('.');
+      await server.commit('feature', { '--no-verify': null });
+
+      await simpleGit().clone(serverDir, shallowDir, ['--depth', '1', '--branch', 'feature']);
+      const ctx = await openRepo(shallowDir);
+      expect(await tryRevparse(ctx, 'main')).toBeNull();
+      expect(await fetchOriginRef(ctx, 'main')).toBe(true);
+      const resolved = await resolveAfterFetch(ctx, 'main');
+      expect(resolved === 'origin/main' || resolved === mainSha || resolved === 'main').toBe(
+        true,
+      );
+      expect(await tryRevparse(ctx, resolved ?? '')).toBe(mainSha);
+    } finally {
+      await rm(serverDir, { recursive: true, force: true });
+      await rm(shallowDir, { recursive: true, force: true });
+    }
   });
 
   it('gitUserName returns null when config throws', async () => {

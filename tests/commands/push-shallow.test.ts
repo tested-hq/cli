@@ -65,7 +65,7 @@ beforeAll(async () => {
   shallow = mkdtempSync(join(tmpdir(), 'tested-push-shallow-'));
   await simpleGit().clone(server, shallow, ['--depth', '1', '--branch', 'feature']);
   writeCoverage(shallow);
-}, 20_000);
+}, 40_000);
 
 afterAll(() => {
   if (server) rmSync(server, { recursive: true, force: true });
@@ -92,24 +92,65 @@ describe('tested push on a shallow PR checkout (no local main)', () => {
     expect(headSha).toMatch(/^[0-9a-f]{40}$/);
   });
 
-  it('fails when push diffs against the literal ref main', async () => {
+  it('resolves a fetchable origin base when local main is missing and --pr is set', async () => {
+    let posted: IngestBody | undefined;
     const result = await executePush(
       { json: false, token: 't', pr: '35', owner: 'acme', name: 'demo' },
       {
         cwd: shallow,
         env: {},
         loadConfigFn: async () => configMain,
-        fetchFn: async () => {
-          throw new Error('ingest must not run when the git base is missing');
+        fetchFn: async (_url, init) => {
+          posted = JSON.parse(String(init?.body)) as IngestBody;
+          return new Response(
+            JSON.stringify({ shareUrl: 'https://app.tested.dev/s/35' }),
+            { status: 200 },
+          );
         },
         onProgress: () => {},
       },
     );
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toMatch(/main/);
-    expect(result.stderr).toMatch(
-      /git base ref "main" not found|unknown revision|ambiguous argument|not in the working tree/i,
-    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toMatch(/git base ref "main" not found/i);
+    expect(posted?.pr?.number).toBe(35);
+    expect(posted?.diff.head).toBe(headSha);
+    expect(posted?.diff.patch.executable).toBeGreaterThan(0);
+    const resolved = posted?.diff.base ?? '';
+    expect(
+      resolved === baseSha ||
+        resolved === 'origin/main' ||
+        resolved === 'main' ||
+        /^[0-9a-f]{40}$/.test(resolved),
+    ).toBe(true);
+  });
+
+  it('keeps the friendly missing-base error when the PR base cannot be fetched', async () => {
+    const isolated = mkdtempSync(join(tmpdir(), 'tested-push-noremote-'));
+    try {
+      const git = simpleGit({ baseDir: isolated });
+      await git.init(['-b', 'feature']);
+      await git.addConfig('user.email', 'test@tested.dev');
+      await git.addConfig('user.name', 'Test');
+      writeFileSync(join(isolated, 'app.ts'), 'export const a = 1;\n');
+      await git.add('.');
+      await git.commit('feature', { '--no-verify': null });
+      writeCoverage(isolated);
+
+      const result = await executePush(
+        { json: false, token: 't', pr: '35', owner: 'acme', name: 'demo' },
+        {
+          cwd: isolated,
+          env: {},
+          loadConfigFn: async () => configMain,
+          fetchFn: async () => new Response('{"message":"Not Found"}', { status: 404 }),
+          onProgress: () => {},
+        },
+      );
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/git base ref "main" not found/);
+    } finally {
+      rmSync(isolated, { recursive: true, force: true });
+    }
   });
 
   it('succeeds when --base is the fetched PR base SHA (Action path)', async () => {

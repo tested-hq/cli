@@ -23,7 +23,7 @@ jobs:
 
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.6
+          version: 0.1.7
 ```
 
 ## Gate + share URL
@@ -31,7 +31,7 @@ jobs:
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.6
+    version: 0.1.7
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -41,7 +41,7 @@ jobs:
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `version` | `0.1.6` | npm version of `@tested/cli` |
+| `version` | `0.1.7` | npm version of `@tested/cli` |
 | `cli-path` | _(empty)_ | Local checkout of `tested-hq/cli` (skips npm) |
 | `cli-repository` | `tested-hq/cli` | GitHub `owner/name` for the git fallback |
 | `cli-ref` | _(empty)_ | Optional git ref instead of npm |

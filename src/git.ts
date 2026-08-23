@@ -1,4 +1,5 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
+import { assertSafeGitRef } from './git-ref.js';
 
 export interface GitContext {
   git: SimpleGit;
@@ -74,6 +75,40 @@ export async function resolveEffectiveBase(
 
 export async function headSha(ctx: GitContext): Promise<string> {
   return (await ctx.git.revparse(['HEAD'])).trim();
+}
+
+/**
+ * Fetch a missing base from origin (shallow-friendly), matching the Action.
+ * `origin/main` is fetched as `main`. Returns false on failure.
+ */
+export async function fetchOriginRef(ctx: GitContext, ref: string): Promise<boolean> {
+  const spec = ref.startsWith('origin/') ? ref.slice('origin/'.length) : ref;
+  try {
+    assertSafeGitRef(spec);
+  } catch {
+    return false;
+  }
+  try {
+    await ctx.git.raw(['fetch', '--depth=1', 'origin', spec]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Name we can rev-parse after a fetch: the ref itself, `origin/<ref>`, or FETCH_HEAD.
+ */
+export async function resolveAfterFetch(
+  ctx: GitContext,
+  ref: string,
+): Promise<string | null> {
+  if (await tryRevparse(ctx, ref)) return ref;
+  if (!ref.startsWith('origin/')) {
+    const originRef = `origin/${ref}`;
+    if (await tryRevparse(ctx, originRef)) return originRef;
+  }
+  return tryRevparse(ctx, 'FETCH_HEAD');
 }
 
 export async function unifiedDiff(ctx: GitContext, base: string): Promise<string> {
