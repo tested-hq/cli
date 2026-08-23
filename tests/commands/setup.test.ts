@@ -23,12 +23,12 @@ const sampleInit: InitResult = {
 function okDoctor(): DoctorResult {
   return {
     checks: [
-      { id: 'node', label: 'Node.js', status: 'pass', detail: 'v22' },
+      { id: 'node', label: 'Node.js', status: 'pass', detail: 'v24' },
       { id: 'config', label: '.tested.yaml', status: 'pass', detail: 'ok' },
     ],
     ok: true,
     exitCode: 0,
-    stdout: 'tested.dev — doctor  [PASS]\n\n  Node.js  [PASS]  v22\n',
+    stdout: 'tested.dev — doctor  [PASS]\n\n  Node.js  [PASS]  v24\n',
     stderr: '',
   };
 }
@@ -59,6 +59,7 @@ describe('buildCiSnippet / token / install', () => {
     expect(text).toContain(PINNED_CLI);
     expect(text).toContain('pnpm add -D @tested/cli');
     expect(text).toContain('npx @tested/cli');
+    expect(text).toContain('Node 24+');
     expect(text).toContain('tested-hq/cli/action@main');
     expect(text.toLowerCase()).not.toMatch(/not on npm|git\+https/);
   });

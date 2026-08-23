@@ -57,11 +57,14 @@ describe('package honesty', () => {
     files: string[];
   };
   const readme = readFileSync(join(root, 'README.md'), 'utf8');
+  const actionReadme = readFileSync(join(root, 'action/README.md'), 'utf8');
+  const gettingStarted = readFileSync(join(root, 'docs/GETTING-STARTED.md'), 'utf8');
   const actionYml = readFileSync(join(root, 'action/action.yml'), 'utf8');
 
-  it('is 0.1.2 with engines.node >=22', () => {
+  it('is 0.1.2 with engines.node >=24', () => {
     expect(pkg.version).toBe('0.1.2');
-    expect(pkg.engines.node).toBe('>=22');
+    expect(pkg.engines.node).toBe('>=24');
+    expect(readFileSync(join(root, '.nvmrc'), 'utf8').trim()).toBe('24');
     expect(CLI_VERSION).toBe(pkg.version);
     expect(createProgram().version()).toBe(pkg.version);
   });
@@ -74,7 +77,12 @@ describe('package honesty', () => {
     expect(readme).toContain('https://tested.dev/docs');
     expect(readme).not.toMatch(/\]\(docs\//);
     expect(readme).not.toMatch(/\]\(action\//);
-    expect(readme).toMatch(/Node 22\+/);
+    expect(readme).toMatch(/Node 24\+/);
+    expect(readme).not.toMatch(/Node 22\+/);
+    expect(actionReadme).toMatch(/Node 24\+/);
+    expect(actionReadme).not.toMatch(/Node 22\+/);
+    expect(gettingStarted).toMatch(/Node 24\+/);
+    expect(gettingStarted).not.toMatch(/Node 22\+/);
     expect(readme).toContain('npx @tested/cli');
     expect(readme).toContain('pnpm exec -- tested --version');
   });

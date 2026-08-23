@@ -69,7 +69,7 @@ pnpm add -D @tested/cli
 npx @tested/cli
 ```
 
-Node 22+.
+Node 24+.
 
 ## Prerequisites in the consumer workflow
 

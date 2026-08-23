@@ -20,7 +20,7 @@ pnpm add -D @tested/cli
 npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
 ```
 
-CLI runs on Node 22+. GitHub Action defaults to Node **24** (local use does not require 24).
+CLI and GitHub Action require Node 24+.
 
 From this repo checkout:
 
@@ -54,7 +54,7 @@ Checks (badges `[PASS]` / `[FAIL]` / `[WARN]` / `[INFO]`):
 
 | Check | Required | Notes |
 |-------|----------|--------|
-| Node.js | yes | Node >= 22. Fail below 22. |
+| Node.js | yes | Node >= 24. Fail below 24. |
 | Git repository | yes | |
 | `.tested.yaml` | yes | `tested setup` / `tested init` |
 | Coverage file | warn | default `coverage/coverage-final.json` — run `tested run` |

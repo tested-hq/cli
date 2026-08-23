@@ -23,7 +23,7 @@ import {
 export const TESTED_BIN_BASENAME_RE = /^tested(\.js)?$/;
 
 /** Product floor. Matches engines.node. Below this, doctor exits 1. */
-export const MIN_NODE_MAJOR = 22;
+export const MIN_NODE_MAJOR = 24;
 
 export type DoctorStatus = 'pass' | 'fail' | 'warn' | 'skip';
 
@@ -147,7 +147,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
 
   const checks: DoctorCheck[] = [];
 
-  // 1. Node version. engines.node is >=22; below that is a hard fail.
+  // 1. Node version. engines.node is >=24; below that is a hard fail.
   const major = parseNodeMajor(nodeVersion);
   const nodeDisplay = nodeVersion.replace(/^v/, 'v');
   if (major !== null && major >= MIN_NODE_MAJOR) {

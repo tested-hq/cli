@@ -57,6 +57,7 @@ export function buildTokenInstructions(): string {
 export function buildInstallInstructions(): string {
   return [
     'Install CLI:',
+    '  Node 24+',
     `  pnpm add -D ${PINNED_CLI}`,
     `  # or: npx ${PINNED_CLI}`,
     '',

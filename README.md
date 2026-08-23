@@ -6,7 +6,7 @@ Docs: https://tested.dev/docs
 
 ## Install
 
-Node 22+.
+Node 24+.
 
 ```bash
 pnpm add -D @tested/cli
