@@ -9,10 +9,10 @@ branding:
 inputs:
   version:
     description: >
-      npm version of @tested/cli to install (e.g. 0.1.2).
+      npm version of @tested/cli to install (e.g. 0.1.3).
       Ignored when cli-path or cli-ref is set.
     required: false
-    default: '0.1.2'
+    default: '0.1.3'
   cli-path:
     description: >
       Local path to a checkout of tested-hq/cli (already on the runner).
@@ -120,12 +120,24 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        TESTED_TOKEN: ${{ inputs.token }}
-        TESTED_API_URL: ${{ inputs.api-url }}
-        GITHUB_PR_NUMBER: ${{ inputs.pr-number }}
-        TESTED_JUNIT: ${{ inputs.junit }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+        INPUT_JUNIT: ${{ inputs.junit }}
       run: |
         set -euo pipefail
+        if [ -n "${INPUT_TOKEN:-}" ]; then
+          export TESTED_TOKEN="$INPUT_TOKEN"
+        fi
+        if [ -n "${INPUT_API_URL:-}" ]; then
+          export TESTED_API_URL="$INPUT_API_URL"
+        fi
+        if [ -n "${INPUT_PR_NUMBER:-}" ]; then
+          export GITHUB_PR_NUMBER="$INPUT_PR_NUMBER"
+        fi
+        if [ -n "${INPUT_JUNIT:-}" ]; then
+          export TESTED_JUNIT="$INPUT_JUNIT"
+        fi
         if [ -z "${TESTED_TOKEN:-}" ]; then
           echo "push=true requires token input or TESTED_TOKEN" >&2
           exit 1
