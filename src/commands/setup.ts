@@ -20,6 +20,7 @@ import {
   INGEST_TOKEN_ENV_NAMES,
   INGEST_TOKEN_SETTINGS_URL_SHAPE,
 } from '../token-help.js';
+import { CLI_VERSION } from '../version.js';
 
 /** npm package name for local / agent installs. */
 export const PINNED_CLI = '@tested/cli';
@@ -37,8 +38,7 @@ export function buildCiSnippet(): string {
     '      - uses: actions/checkout@v4',
     '      - uses: tested-hq/cli/action@main',
     '        with:',
-    '          # pin ref for reproducible installs (do not use floating tags in prod)',
-    '          cli-ref: main',
+    `          version: ${CLI_VERSION}`,
     '          push: true',
     '          pr-number: ${{ github.event.pull_request.number }}',
     '          token: ${{ secrets.TESTED_TOKEN }}',

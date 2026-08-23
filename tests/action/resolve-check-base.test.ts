@@ -65,7 +65,8 @@ describe('action.yml wiring', () => {
     expect(yml).toContain('github.event.before');
     expect(yml).toContain('github.base_ref');
     expect(yml).toMatch(/tested check --base/);
-    expect(yml).not.toMatch(/node "\$BIN" check\s*$/m);
+    expect(yml).toContain('install-cli.sh');
+    expect(yml).not.toMatch(/node "\$BIN" check/);
   });
 });
 

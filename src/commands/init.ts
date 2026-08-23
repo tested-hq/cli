@@ -13,6 +13,12 @@ import pc from 'picocolors';
 
 export type TestRunner = 'vitest' | 'jest' | 'pytest';
 
+/** New configs match the product / dashboard defaults. */
+export const DEFAULT_INIT_THRESHOLDS = {
+  patch: 80,
+  project: 90,
+} as const;
+
 export interface DetectedProject {
   hasPackageJson: boolean;
   testRunner: TestRunner | null;
@@ -97,8 +103,8 @@ export function buildInitYaml(args: BuildInitYamlArgs): string {
   lines.push('# Patch gate is skipped when the diff has no executable lines');
   lines.push('# (tests-only, comments-only, docs-only, or ignored files).');
   lines.push('thresholds:');
-  lines.push('  patch: 80');
-  lines.push('  project: 60');
+  lines.push(`  patch: ${DEFAULT_INIT_THRESHOLDS.patch}`);
+  lines.push(`  project: ${DEFAULT_INIT_THRESHOLDS.project}`);
   lines.push('ignores:');
   for (const pattern of DEFAULT_INIT_IGNORES) {
     lines.push(`  - "${pattern}"`);

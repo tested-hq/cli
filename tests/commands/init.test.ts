@@ -56,7 +56,7 @@ describe('buildInitYaml', () => {
     const parsed = parseYaml(yaml);
     expect(parsed.base).toBe('main');
     expect(parsed.testRunner).toBe('vitest');
-    expect(parsed.thresholds).toEqual({ patch: 80, project: 60 });
+    expect(parsed.thresholds).toEqual({ patch: 80, project: 90 });
     expect(parsed.ignores).toContain('**/*.test.ts');
     expect(parsed.ignores).toContain('**/*.spec.ts');
     expect(parsed.ignores).toContain('**/node_modules/**');
@@ -151,6 +151,7 @@ describe('runInit', () => {
     const parsed = parseYaml(readFileSync(join(dir, '.tested.yaml'), 'utf8'));
     expect(parsed.testRunner).toBe('vitest');
     expect(parsed.base).toBe('main');
+    expect(parsed.thresholds).toEqual({ patch: 80, project: 90 });
     // Agent loop next steps
     expect(result.nextSteps.join('\n')).toMatch(/tested run/);
     expect(result.nextSteps.join('\n')).toMatch(/tested diff/);

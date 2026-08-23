@@ -1,11 +1,8 @@
 # tested GitHub Action
 
-Composite action: install `@tested/cli` from **git** (or a local path), run
-`tested check`, optionally `tested push`.
+Install `@tested/cli` from npm, run `tested check`, optionally `tested push`.
 
-Local / agent installs use npm (`pnpm add -D @tested/cli`). CI uses this Action:
-`uses: tested-hq/cli/action@main`. The Action clones
-[`tested-hq/cli`](https://github.com/tested-hq/cli) and builds the CLI.
+`uses: tested-hq/cli/action@main`. Default install is `npm i -g @tested/cli@<version>`.
 
 ## Minimal (gate only)
 
@@ -22,12 +19,11 @@ jobs:
 
       # your project: install deps + produce coverage/coverage-final.json
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test -- --coverage   # or: tested run once CLI is on PATH
+      - run: pnpm test -- --coverage
 
       - uses: tested-hq/cli/action@main
         with:
-          # pin a commit SHA in production
-          cli-ref: main
+          version: 0.1.2
 ```
 
 ## Gate + share URL
@@ -35,7 +31,7 @@ jobs:
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    cli-ref: main          # or full commit SHA
+    version: 0.1.2
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -45,9 +41,10 @@ jobs:
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `cli-path` | _(empty)_ | Local checkout of `tested-hq/cli` (skips git clone) |
-| `cli-repository` | `tested-hq/cli` | GitHub `owner/name` to clone |
-| `cli-ref` | `main` | Branch, tag, or **commit SHA** (prefer SHA in prod) |
+| `version` | `0.1.2` | npm version of `@tested/cli` |
+| `cli-path` | _(empty)_ | Local checkout of `tested-hq/cli` (skips npm) |
+| `cli-repository` | `tested-hq/cli` | GitHub `owner/name` for the git fallback |
+| `cli-ref` | _(empty)_ | Optional git ref instead of npm |
 | `working-directory` | `.` | Project root with `.tested.yaml` + coverage |
 | `base` | _(empty)_ | Override git base. Default: PR base SHA, or previous commit on push. Fetched if missing (no `fetch-depth: 0` required). |
 | `push` | `false` | Run `tested push` after check |
@@ -69,10 +66,10 @@ jobs:
 ```bash
 pnpm add -D @tested/cli
 # or
-npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
+npx @tested/cli
 ```
 
-Node >= 20.19.
+Node 22+.
 
 ## Prerequisites in the consumer workflow
 

@@ -22,6 +22,9 @@ import {
 /** Basename policy for TESTED_BIN (MCP / agent hosts). */
 export const TESTED_BIN_BASENAME_RE = /^tested(\.js)?$/;
 
+/** Product floor. Matches engines.node. Below this, doctor exits 1. */
+export const MIN_NODE_MAJOR = 22;
+
 export type DoctorStatus = 'pass' | 'fail' | 'warn' | 'skip';
 
 export interface DoctorCheck {
@@ -144,24 +147,22 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
 
   const checks: DoctorCheck[] = [];
 
-  // 1. Node version. The process is already running, so < 22 is a warn
-  // (Jorge's dogfood: Node 20.19.2 ran tested diff / check). Do not hard-fail.
+  // 1. Node version. engines.node is >=22; below that is a hard fail.
   const major = parseNodeMajor(nodeVersion);
   const nodeDisplay = nodeVersion.replace(/^v/, 'v');
-  if (major !== null && major >= 22) {
+  if (major !== null && major >= MIN_NODE_MAJOR) {
     checks.push({
       id: 'node',
       label: 'Node.js',
       status: 'pass',
-      detail: `${nodeDisplay} (>= 20.19; 22+ recommended)`,
+      detail: `${nodeDisplay} (>= ${MIN_NODE_MAJOR})`,
     });
   } else {
     checks.push({
       id: 'node',
       label: 'Node.js',
-      status: 'warn',
-      detail: `${nodeDisplay} runs this CLI. Node >= 22 recommended.`,
-      optional: true,
+      status: 'fail',
+      detail: `${nodeDisplay} is below ${MIN_NODE_MAJOR}. Node >= ${MIN_NODE_MAJOR} required.`,
     });
   }
 
@@ -403,7 +404,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
   // Fail exit when any non-optional check is fail, OR when optional checks that
   // are hard-fails for safety (token file error, bad API URL, bad TESTED_BIN)
   // are fail. Coverage/token-missing stay warn (optional).
-  const hardFailIds = new Set(['git', 'config', 'origin']);
+  const hardFailIds = new Set(['node', 'git', 'config', 'origin']);
   const safetyFailIds = new Set(['api_url', 'tested_bin', 'token']);
   const hasHardFail = checks.some(
     (c) => c.status === 'fail' && hardFailIds.has(c.id),
