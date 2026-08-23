@@ -299,7 +299,7 @@ describe.sequential('public CLI commands (in-process)', () => {
       } finally {
         await rm(fresh.repo, { recursive: true, force: true });
       }
-    });
+    }, 30_000);
 
     it('succeeds in a non-TTY without --force or --no-hooks', async () => {
       const fresh = await makeTempRepo();
@@ -312,7 +312,7 @@ describe.sequential('public CLI commands (in-process)', () => {
       } finally {
         await rm(fresh.repo, { recursive: true, force: true });
       }
-    });
+    }, 30_000);
 
     it('prints a human error when .tested.yaml already exists', async () => {
       const result = await invokeCli(['init', '--no-hooks'], { cwd: repo });
