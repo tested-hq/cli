@@ -61,6 +61,7 @@ describe('package honesty', () => {
   const gettingStarted = readFileSync(join(root, 'docs/GETTING-STARTED.md'), 'utf8');
   const actionYml = readFileSync(join(root, 'action/action.yml'), 'utf8');
   const runPushSh = readFileSync(join(root, 'action/run-push.sh'), 'utf8');
+  const ciYml = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
 
   it('is 0.1.7 with engines.node >=24', () => {
     expect(pkg.version).toBe('0.1.7');
@@ -97,5 +98,18 @@ describe('package honesty', () => {
     expect(runPushSh).toMatch(/tested push --mainline --base "\$BASE"/);
     expect(actionYml).not.toMatch(/node "\$BIN" check/);
     expect(actionYml).not.toMatch(/git clone/);
+  });
+
+  it('dogfoods hobby push on PRs without hardcoding the token', () => {
+    expect(ciYml).toContain('uses: ./action');
+    expect(ciYml).toContain("version: '0.1.7'");
+    expect(ciYml).toContain("push: 'true'");
+    expect(ciYml).toContain('pr-number: ${{ github.event.pull_request.number }}');
+    expect(ciYml).toContain('token: ${{ secrets.TESTED_TOKEN }}');
+    expect(ciYml).not.toMatch(/token:\s*['"]?(tested_|sk_)/i);
+    expect(ciYml).not.toMatch(/TESTED_TOKEN:\s*['"][^$\s]/);
+    expect(actionYml).toMatch(
+      /name: tested push \(optional\)\s*\n\s+if: inputs\.push == 'true'\s*\n\s+continue-on-error: true/,
+    );
   });
 });

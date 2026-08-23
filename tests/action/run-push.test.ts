@@ -58,6 +58,9 @@ describe('action.yml push wiring', () => {
     expect(yml).toContain('INPUT_BASE: ${{ inputs.base }}');
     expect(yml).toContain('PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}');
     expect(yml).toContain('ACTION_PATH: ${{ github.action_path }}');
+    expect(yml).toMatch(
+      /name: tested push \(optional\)\s*\n\s+if: inputs\.push == 'true'\s*\n\s+continue-on-error: true/,
+    );
   });
 });
 

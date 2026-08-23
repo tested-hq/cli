@@ -34,13 +34,19 @@ jobs:
 
       - run: pnpm typecheck
 
-      - run: pnpm test
+      - run: pnpm test:coverage
 
       - run: pnpm build
 
-      - name: dogfood — tested diff against base
+      # Dogfood this checkout (npm 0.1.7 is not published until this lands).
+      # Check is the gate. Push is best-effort so a missing/invalid token
+      # still leaves the coverage verdict in the log.
+      - name: tested check + hobby push
         if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: node dist/tested.js diff --base "origin/$BASE_REF" --format json | tee tested-output.json
-        continue-on-error: true
+        uses: ./action
+        with:
+          version: '0.1.7'
+          cli-path: .
+          push: 'true'
+          pr-number: ${{ github.event.pull_request.number }}
+          token: ${{ secrets.TESTED_TOKEN }}
