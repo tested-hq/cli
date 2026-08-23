@@ -11,6 +11,46 @@ export interface ResolvedRun {
   args: string[];
 }
 
+/**
+ * Peel tested-owned flags off the runner argv.
+ *
+ * `--json` is tested's own summary. Forwarding it crashes Vitest
+ * (`CACError: Unknown option --json`). After `--`, remaining args go through.
+ */
+export function splitRunArgs(extraArgs: readonly string[]): {
+  json: boolean;
+  forwarded: string[];
+} {
+  let json = false;
+  const forwarded: string[] = [];
+  let passthrough = false;
+  for (const a of extraArgs) {
+    if (!passthrough && a === '--') {
+      passthrough = true;
+      continue;
+    }
+    if (!passthrough && (a === '--json' || a === '--json=true')) {
+      json = true;
+      continue;
+    }
+    forwarded.push(a);
+  }
+  return { json, forwarded };
+}
+
+export interface RunJsonOutput {
+  schemaVersion: 1;
+  command: string;
+  args: string[];
+  exitCode: number;
+  coverageWritten: boolean;
+  coveragePath: string;
+}
+
+export function buildRunJsonOutput(input: Omit<RunJsonOutput, 'schemaVersion'>): RunJsonOutput {
+  return { schemaVersion: 1, ...input };
+}
+
 export function resolveRunCommand(opts: {
   runner: TestRunner | null;
   extraArgs: readonly string[];
@@ -140,15 +180,19 @@ export function registerRunCommand(program: Command): void {
   program
     .command('run')
     .description(
-      "Run the user's test suite with coverage enabled (runner read from .tested.yaml; defaults to vitest)",
+      'Run the project test suite with coverage (writes coverage even if tests fail)',
     )
+    .option('--json', 'Emit tested JSON summary (not forwarded to the runner)', false)
     .allowUnknownOption(true)
     .argument('[args...]', 'Extra arguments forwarded to the runner')
-    .action(async (extraArgs: string[]) => {
+    .action(async (extraArgs: string[], opts: { json: boolean }) => {
       const cwd = process.cwd();
+      const split = splitRunArgs(extraArgs ?? []);
+      const json = Boolean(opts.json) || split.json;
+      const forwarded = split.forwarded;
       try {
         if (shouldEnforceSafeRun()) {
-          assertSafeRunArgs(extraArgs, cwd);
+          assertSafeRunArgs(forwarded, cwd);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -161,16 +205,30 @@ export function registerRunCommand(program: Command): void {
       const coveragePath = resolve(cwd, config.coverage.path);
       const { command, args } = resolveRunCommand({
         runner: config.testRunner,
-        extraArgs,
+        extraArgs: forwarded,
       });
 
-      process.stderr.write(heading('tested.dev — running tests with coverage') + '\n');
-      process.stderr.write(dim(`${command} ${args.join(' ')}`) + '\n\n');
+      if (!json) {
+        process.stderr.write(heading('tested.dev — running tests with coverage') + '\n');
+        process.stderr.write(dim(`${command} ${args.join(' ')}`) + '\n\n');
+      }
 
       const child = spawn(command, args, { stdio: 'inherit' });
       child.on('exit', (code) => {
         const exit = code ?? 1;
         const coverageWritten = existsSync(coveragePath);
+        if (json) {
+          const payload = buildRunJsonOutput({
+            command,
+            args,
+            exitCode: exit,
+            coverageWritten,
+            coveragePath: config.coverage.path,
+          });
+          process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+          process.exit(exit);
+          return;
+        }
         if (exit === 0) {
           process.stderr.write('\n');
           process.stderr.write(tip('tested diff') + '\n');

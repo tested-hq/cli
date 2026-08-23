@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import type { TestedConfig, DiffOutput } from '../schemas.js';
 import {
   openRepo,
-  resolveBase,
+  resolveEffectiveBase,
   headSha,
   unifiedDiff,
   type GitContext,
@@ -37,8 +37,8 @@ export interface ComputeDiffOpts {
 export async function computeDiff(opts: ComputeDiffOpts): Promise<DiffOutput> {
   const { cwd, config } = opts;
   const ctx = opts.ctx ?? (await openRepo(cwd));
-  const baseRef = assertSafeGitRef(opts.baseRef ?? config.base);
-  const base = await resolveBase(ctx, baseRef);
+  const requested = assertSafeGitRef(opts.baseRef ?? config.base);
+  const { ref: baseRef, sha: base } = await resolveEffectiveBase(ctx, requested);
   const head = await headSha(ctx);
   const diffText = await unifiedDiff(ctx, base);
   const addedByFile = parseUnifiedDiff(diffText);

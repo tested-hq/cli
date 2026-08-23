@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { simpleGit } from 'simple-git';
 import { invokeCli } from './helpers/invoke-cli.js';
 import { makeTempRepo } from './helpers/temp-repo.js';
 
@@ -102,6 +104,16 @@ describe.sequential('public CLI commands (in-process)', () => {
       expect(result.stdout).toContain('no executable lines in the patch');
       expect(result.stdout).not.toMatch(/Patch\s+0\.0%/);
       expect(result.stdout).not.toContain('0/0');
+    });
+
+    it('prints a friendly error when --base origin/main is missing', async () => {
+      const result = await invokeCli(['diff', '--base', 'origin/main'], {
+        cwd: repo,
+      });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('git base ref "origin/main" not found');
+      expect(result.stderr).toContain('That ref is not in this repository');
+      expect(result.stderr).not.toMatch(/fatal:/);
     });
 
     it('writes a guided error when coverage is missing', async () => {
@@ -212,6 +224,12 @@ describe.sequential('public CLI commands (in-process)', () => {
   });
 
   describe('tested ignores list', () => {
+    it('lists patterns with no subcommand and exits 0', async () => {
+      const result = await invokeCli(['ignores'], { cwd: repo });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toMatch(/tests\/\*\*|scripts\/\*\*/);
+    });
+
     it('prints merged ignore patterns', async () => {
       const result = await invokeCli(['ignores', 'list'], { cwd: repo });
       expect(result.exitCode).toBe(0);
@@ -281,7 +299,20 @@ describe.sequential('public CLI commands (in-process)', () => {
       } finally {
         await rm(fresh.repo, { recursive: true, force: true });
       }
-    });
+    }, 30_000);
+
+    it('succeeds in a non-TTY without --force or --no-hooks', async () => {
+      const fresh = await makeTempRepo();
+      await rm(join(fresh.repo, '.tested.yaml'), { force: true });
+      try {
+        const result = await invokeCli(['init'], { cwd: fresh.repo });
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toMatch(/init|\.tested\.yaml/);
+        expect(result.stderr).not.toMatch(/--hooks/);
+      } finally {
+        await rm(fresh.repo, { recursive: true, force: true });
+      }
+    }, 30_000);
 
     it('prints a human error when .tested.yaml already exists', async () => {
       const result = await invokeCli(['init', '--no-hooks'], { cwd: repo });
@@ -310,6 +341,34 @@ describe.sequential('public CLI commands (in-process)', () => {
     });
   });
 
+  describe('tested token / whoami', () => {
+    it('prints a mint URL and env names', async () => {
+      const result = await invokeCli(['token'], { cwd: repo });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toMatch(/app\.tested\.dev\/repos\//);
+      expect(result.stdout).toContain('TESTED_TOKEN');
+    });
+
+    it('whoami reports a missing token without printing a secret', async () => {
+      const envToken = process.env.TESTED_TOKEN;
+      const envIngest = process.env.TESTED_INGEST_TOKEN;
+      const envFile = process.env.TESTED_TOKEN_FILE;
+      delete process.env.TESTED_TOKEN;
+      delete process.env.TESTED_INGEST_TOKEN;
+      delete process.env.TESTED_TOKEN_FILE;
+      try {
+        const result = await invokeCli(['whoami'], { cwd: repo });
+        expect(result.exitCode).toBe(1);
+        expect(result.stdout).toContain('token: not set');
+        expect(result.stdout).not.toMatch(/sk_|ghp_/);
+      } finally {
+        if (envToken !== undefined) process.env.TESTED_TOKEN = envToken;
+        if (envIngest !== undefined) process.env.TESTED_INGEST_TOKEN = envIngest;
+        if (envFile !== undefined) process.env.TESTED_TOKEN_FILE = envFile;
+      }
+    });
+  });
+
   describe('tested run (safe-run denylist)', () => {
     it('rejects --watch without spawning a runner', async () => {
       const result = await invokeCli(['run', '--watch'], { cwd: repo });
@@ -317,6 +376,57 @@ describe.sequential('public CLI commands (in-process)', () => {
       expect(result.stderr).toMatch(/watch/);
     });
   });
+});
+
+describe('tested diff — first repo on main', () => {
+  it('falls back to HEAD~1 so the local patch has executable lines', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'tested-first-main-'));
+    const git = simpleGit({ baseDir: tempDir });
+    await git.init(['-b', 'main']);
+    await git.addConfig('user.email', 'test@tested.dev');
+    await git.addConfig('user.name', 'Test');
+    const root = (await git.revparse(['--show-toplevel'])).trim();
+    await mkdir(join(root, 'src'));
+    await writeFile(join(root, 'src/auth.ts'), 'export const a = 1;\n');
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'demo' }));
+    await writeFile(join(root, '.tested.yaml'), 'base: main\n');
+    await git.add('.');
+    await git.commit('init', { '--no-verify': null });
+    await writeFile(
+      join(root, 'src/auth.ts'),
+      'export const a = 1;\nexport const b = 2;\nexport const c = 3;\n',
+    );
+    await git.add('.');
+    await git.commit('add b and c', { '--no-verify': null });
+    const authPath = join(root, 'src/auth.ts');
+    await mkdir(join(root, 'coverage'));
+    await writeFile(
+      join(root, 'coverage/coverage-final.json'),
+      JSON.stringify({
+        [authPath]: {
+          path: authPath,
+          statementMap: {
+            '0': { start: { line: 1, column: 0 }, end: { line: 1, column: 20 } },
+            '1': { start: { line: 2, column: 0 }, end: { line: 2, column: 20 } },
+            '2': { start: { line: 3, column: 0 }, end: { line: 3, column: 20 } },
+          },
+          s: { '0': 1, '1': 1, '2': 0 },
+        },
+      }),
+    );
+    try {
+      const result = await invokeCli(['diff', '--json'], { cwd: root });
+      expect(result.exitCode).toBe(0);
+      const parsed = JSON.parse(result.stdout) as {
+        base: string;
+        patch: { executable: number };
+      };
+      expect(parsed.base).toBe('HEAD~1');
+      expect(parsed.patch.executable).toBeGreaterThan(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 describe('tested explain — source path boundary', () => {

@@ -107,7 +107,9 @@ describe('tested push on a shallow PR checkout (no local main)', () => {
     );
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toMatch(/main/);
-    expect(result.stderr).toMatch(/unknown revision|ambiguous argument|not in the working tree/i);
+    expect(result.stderr).toMatch(
+      /git base ref "main" not found|unknown revision|ambiguous argument|not in the working tree/i,
+    );
   });
 
   it('succeeds when --base is the fetched PR base SHA (Action path)', async () => {

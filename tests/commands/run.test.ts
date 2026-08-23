@@ -3,7 +3,61 @@ import {
   resolveRunCommand,
   shouldEnforceSafeRun,
   assertSafeRunArgs,
+  splitRunArgs,
+  buildRunJsonOutput,
 } from '../../src/commands/run.js';
+
+describe('splitRunArgs', () => {
+  it('peels --json so it is not forwarded to the runner', () => {
+    expect(splitRunArgs(['--json', 'src/a.test.ts'])).toEqual({
+      json: true,
+      forwarded: ['src/a.test.ts'],
+    });
+    expect(splitRunArgs(['src/a.test.ts', '--json'])).toEqual({
+      json: true,
+      forwarded: ['src/a.test.ts'],
+    });
+    expect(splitRunArgs(['--json=true'])).toEqual({
+      json: true,
+      forwarded: [],
+    });
+  });
+
+  it('forwards --json after -- to the runner', () => {
+    expect(splitRunArgs(['--', '--json'])).toEqual({
+      json: false,
+      forwarded: ['--json'],
+    });
+  });
+
+  it('leaves other args alone', () => {
+    expect(splitRunArgs(['--reporter=verbose'])).toEqual({
+      json: false,
+      forwarded: ['--reporter=verbose'],
+    });
+  });
+});
+
+describe('buildRunJsonOutput', () => {
+  it('is schema-v1', () => {
+    expect(
+      buildRunJsonOutput({
+        command: 'npx',
+        args: ['vitest', 'run', '--coverage', '--coverage.reportOnFailure'],
+        exitCode: 1,
+        coverageWritten: true,
+        coveragePath: 'coverage/coverage-final.json',
+      }),
+    ).toEqual({
+      schemaVersion: 1,
+      command: 'npx',
+      args: ['vitest', 'run', '--coverage', '--coverage.reportOnFailure'],
+      exitCode: 1,
+      coverageWritten: true,
+      coveragePath: 'coverage/coverage-final.json',
+    });
+  });
+});
 
 describe('resolveRunCommand', () => {
   it('uses npx vitest with --coverage by default', () => {

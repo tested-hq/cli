@@ -11,6 +11,7 @@ import {
   formatInitResultHuman,
   buildInitJsonOutput,
   runInit,
+  resolveInitHooks,
   type DetectedProject,
 } from '../../src/commands/init.js';
 
@@ -231,6 +232,34 @@ describe('runInit', () => {
     expect(result.hookInstalled).toBe(false);
     expect(existsSync(join(dir, '.husky/pre-push'))).toBe(false);
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('resolveInitHooks', () => {
+  it('defaults to no hooks', () => {
+    expect(
+      resolveInitHooks({ hooks: false, force: false, isTTY: true, env: {} }),
+    ).toBe(false);
+  });
+
+  it('skips --hooks in CI / non-TTY unless --force is set', () => {
+    expect(
+      resolveInitHooks({ hooks: true, force: false, isTTY: false, env: {} }),
+    ).toBe(false);
+    expect(
+      resolveInitHooks({
+        hooks: true,
+        force: false,
+        isTTY: true,
+        env: { CI: 'true' },
+      }),
+    ).toBe(false);
+    expect(
+      resolveInitHooks({ hooks: true, force: true, isTTY: false, env: {} }),
+    ).toBe(true);
+    expect(
+      resolveInitHooks({ hooks: true, force: false, isTTY: true, env: {} }),
+    ).toBe(true);
   });
 });
 

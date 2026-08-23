@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { simpleGit } from 'simple-git';
 import {
   dim,
@@ -133,6 +133,32 @@ export interface RunInitOpts {
   hooks: boolean;
 }
 
+/**
+ * Whether to install hooks from the CLI flags.
+ *
+ * Default is no hooks. `--hooks` in a non-TTY / CI shell still requires
+ * `--force` so agents and `tested setup` → `tested init` never trap on
+ * unattended hook install.
+ */
+export function resolveInitHooks(opts: {
+  hooks: boolean;
+  force: boolean;
+  isTTY?: boolean;
+  env?: NodeJS.ProcessEnv;
+}): boolean {
+  if (!opts.hooks) return false;
+  const env = opts.env ?? process.env;
+  const ci =
+    env.CI === '1' ||
+    env.CI === 'true' ||
+    env.GITHUB_ACTIONS === 'true';
+  const isTTY = opts.isTTY ?? Boolean(process.stdin.isTTY);
+  if ((!isTTY || ci) && !opts.force) {
+    return false;
+  }
+  return true;
+}
+
 export async function runInit(opts: RunInitOpts): Promise<InitResult> {
   const { cwd, force, hooks } = opts;
   const pkgJsonPath = join(cwd, 'package.json');
@@ -233,15 +259,16 @@ export function registerInitCommand(program: Command): void {
     .command('init')
     .description('Initialize tested.dev in the current project (writes .tested.yaml)')
     .option('--force', 'Overwrite an existing .tested.yaml', false)
-    .option('--no-hooks', 'Skip installing the husky pre-push hook')
+    .option('--hooks', 'Install husky pre-push hook (skipped by default in CI / non-TTY)', false)
+    .addOption(new Option('--no-hooks').hideHelp())
     .option('--json', 'Emit JSON instead of human text', false)
     .action(async (opts: { force: boolean; hooks: boolean; json: boolean }) => {
       try {
-        if (opts.hooks && !process.stdin.isTTY && !opts.force) {
+        if (opts.hooks && !resolveInitHooks({ hooks: true, force: opts.force })) {
           process.stderr.write(
             errorBlock(
               '--hooks in a non-TTY environment requires --force to confirm',
-              ['Would install a git hook unattended.'],
+              ['Would install a git hook unattended.', 'Omit --hooks to init without a hook.'],
             ),
           );
           process.exit(1);
@@ -249,7 +276,7 @@ export function registerInitCommand(program: Command): void {
         const result = await runInit({
           cwd: process.cwd(),
           force: opts.force,
-          hooks: opts.hooks,
+          hooks: resolveInitHooks({ hooks: opts.hooks, force: opts.force }),
         });
         if (opts.json) {
           process.stdout.write(JSON.stringify(buildInitJsonOutput(result), null, 2) + '\n');

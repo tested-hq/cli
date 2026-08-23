@@ -8,6 +8,7 @@ import { registerCheckCommand } from './commands/check.js';
 import { registerPushCommand } from './commands/push.js';
 import { registerExplainCommand } from './commands/explain.js';
 import { registerIgnoresCommand } from './commands/ignores.js';
+import { registerTokenCommand, registerWhoamiCommand } from './commands/token.js';
 import { CLI_VERSION } from './version.js';
 
 export function createProgram(): Command {
@@ -24,7 +25,7 @@ export function createProgram(): Command {
     )
     .version(CLI_VERSION);
 
-  // Workflow order: setup/doctor → init → run → diff → check → push → explain → ignores
+  // Workflow order: setup/doctor → init → run → diff → check → push → token/whoami → explain → ignores
   registerSetupCommand(program);
   registerDoctorCommand(program);
   registerInitCommand(program);
@@ -32,6 +33,8 @@ export function createProgram(): Command {
   registerDiffCommand(program);
   registerCheckCommand(program);
   registerPushCommand(program);
+  registerTokenCommand(program);
+  registerWhoamiCommand(program);
   registerExplainCommand(program);
   registerIgnoresCommand(program);
   return program;
