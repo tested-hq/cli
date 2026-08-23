@@ -71,9 +71,14 @@ describe('action.yml wiring', () => {
 
   it('passes the same resolved --base to tested push (not the branch name main)', () => {
     const yml = readFileSync(actionYml, 'utf8');
-    expect(yml).toMatch(/tested push --pr "\$PR" --base "\$BASE"/);
-    expect(yml).toMatch(/tested push --mainline --base "\$BASE"/);
-    expect(yml).not.toMatch(/tested push --pr "\$PR" "\$\{EXTRA_URL\[@\]\}"/);
+    const pushSh = readFileSync(join(here, '../../action/run-push.sh'), 'utf8');
+    expect(yml).toContain('run-push.sh');
+    expect(yml).toContain('INPUT_BASE: ${{ inputs.base }}');
+    expect(yml).toContain('PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}');
+    expect(pushSh).toContain('resolve-check-base.sh');
+    expect(pushSh).toMatch(/tested push --pr "\$PR" --base "\$BASE"/);
+    expect(pushSh).toMatch(/tested push --mainline --base "\$BASE"/);
+    expect(pushSh).not.toMatch(/tested push --pr "\$PR" "\$\{EXTRA_URL\[@\]\}"/);
   });
 });
 

@@ -9,10 +9,10 @@ branding:
 inputs:
   version:
     description: >
-      npm version of @tested/cli to install (e.g. 0.1.4).
+      npm version of @tested/cli to install (e.g. 0.1.5).
       Ignored when cli-path or cli-ref is set.
     required: false
-    default: '0.1.4'
+    default: '0.1.5'
   cli-path:
     description: >
       Local path to a checkout of tested-hq/cli (already on the runner).
@@ -61,7 +61,7 @@ inputs:
     required: false
     default: ''
   api-url:
-    description: 'Optional TESTED_API_URL override.'
+    description: 'Optional TESTED_API_URL override (trusted). Ambient TESTED_API_URL is ignored.'
     required: false
     default: ''
   junit:
@@ -124,64 +124,16 @@ runs:
         INPUT_API_URL: ${{ inputs.api-url }}
         INPUT_PR_NUMBER: ${{ inputs.pr-number }}
         INPUT_JUNIT: ${{ inputs.junit }}
+        INPUT_MAINLINE: ${{ inputs.mainline }}
+        INPUT_REPOSITORY: ${{ github.repository }}
         INPUT_BASE: ${{ inputs.base }}
+        ACTION_PATH: ${{ github.action_path }}
         EVENT_NAME: ${{ github.event_name }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         GITHUB_BASE_REF: ${{ github.base_ref }}
         PUSH_BEFORE: ${{ github.event.before }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      run: |
-        set -euo pipefail
-        if [ -z "${PR_BASE_REF:-}" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
-          PR_BASE_REF="$GITHUB_BASE_REF"
-        fi
-        BASE="$(bash "${{ github.action_path }}/resolve-check-base.sh")"
-        if [ -n "${INPUT_TOKEN:-}" ]; then
-          export TESTED_TOKEN="$INPUT_TOKEN"
-        fi
-        if [ -n "${INPUT_API_URL:-}" ]; then
-          export TESTED_API_URL="$INPUT_API_URL"
-        fi
-        if [ -n "${INPUT_PR_NUMBER:-}" ]; then
-          export GITHUB_PR_NUMBER="$INPUT_PR_NUMBER"
-        fi
-        if [ -n "${INPUT_JUNIT:-}" ]; then
-          export TESTED_JUNIT="$INPUT_JUNIT"
-        fi
-        if [ -z "${TESTED_TOKEN:-}" ]; then
-          echo "push=true requires token input or TESTED_TOKEN" >&2
-          exit 1
-        fi
-        EXTRA_URL=()
-        if [ -n "${TESTED_API_URL:-}" ]; then
-          EXTRA_URL=(--url "$TESTED_API_URL")
-        fi
-        EXTRA_JUNIT=()
-        if [ -n "${TESTED_JUNIT:-}" ]; then
-          EXTRA_JUNIT=(--junit "$TESTED_JUNIT")
-        fi
-        MAINLINE="${{ inputs.mainline }}"
-        # Auto-mainline on push to default branch when not a PR event
-        if [ "$MAINLINE" != "true" ] && [ "${{ github.event_name }}" = "push" ]; then
-          DEF="${{ github.event.repository.default_branch }}"
-          REF="${{ github.ref_name }}"
-          if [ -n "$DEF" ] && [ "$REF" = "$DEF" ]; then
-            MAINLINE=true
-          fi
-        fi
-        if [ "$MAINLINE" = "true" ]; then
-          echo "tested push --mainline --base $BASE"
-          tested push --mainline --base "$BASE" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"
-          exit 0
-        fi
-        PR="${GITHUB_PR_NUMBER:-}"
-        if [ -z "$PR" ]; then
-          PR="${{ github.event.pull_request.number }}"
-        fi
-        if [ -z "$PR" ] || [ "$PR" = "" ]; then
-          echo "push=true requires pr-number, a pull_request event, or mainline=true / push to default branch" >&2
-          exit 1
-        fi
-        echo "tested push --pr $PR --base $BASE"
-        tested push --pr "$PR" --base "$BASE" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"
+        REF_NAME: ${{ github.ref_name }}
+      run: bash "${{ github.action_path }}/run-push.sh"

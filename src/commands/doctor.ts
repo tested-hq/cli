@@ -333,7 +333,10 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
   const rawApi = env.TESTED_API_URL;
   if (rawApi !== undefined && rawApi !== '') {
     try {
-      const normalized = assertSafe(rawApi);
+      const allowCustom =
+        env.TESTED_ALLOW_CUSTOM_API_URL === '1' ||
+        env.TESTED_ALLOW_CUSTOM_API_URL === 'true';
+      const normalized = assertSafe(rawApi, { allowCustom });
       checks.push({
         id: 'api_url',
         label: 'API URL',

@@ -5,6 +5,8 @@ import {
   resetTokenArgvWarning,
   resolveApiBase,
   assertSafeApiBase,
+  isAllowedApiHost,
+  parseGitHubRepository,
   redactGitRemote,
   resolvePrNumber,
   parseGitHubRemote,
@@ -145,12 +147,12 @@ describe('resolveApiBase / assertSafeApiBase', () => {
   it('prefers flag, then TESTED_API_URL, strips trailing slash', () => {
     expect(
       resolveApiBase({
-        flag: 'https://example.com/',
-        env: { TESTED_API_URL: 'https://env.example/' },
+        flag: 'https://staging.tested.dev/',
+        env: { TESTED_API_URL: 'https://app.tested.dev/' },
       }),
-    ).toBe('https://example.com');
-    expect(resolveApiBase({ env: { TESTED_API_URL: 'https://env.example/' } })).toBe(
-      'https://env.example',
+    ).toBe('https://staging.tested.dev');
+    expect(resolveApiBase({ env: { TESTED_API_URL: 'https://app.tested.dev/' } })).toBe(
+      'https://app.tested.dev',
     );
   });
 
@@ -162,6 +164,41 @@ describe('resolveApiBase / assertSafeApiBase', () => {
   it('rejects non-https remote URLs (SSRF / token exfil)', () => {
     expect(() => assertSafeApiBase('http://evil.example/')).toThrow(/https/);
     expect(() => assertSafeApiBase('ftp://app.tested.dev')).toThrow(/https/);
+  });
+
+  it('rejects arbitrary https hosts so the Bearer token cannot be exfiltrated', () => {
+    expect(() => assertSafeApiBase('https://evil.example/')).toThrow(/not allowed/);
+    expect(() =>
+      resolveApiBase({ env: { TESTED_API_URL: 'https://attacker.example' } }),
+    ).toThrow(/not allowed/);
+    expect(() => assertSafeApiBase('https://app.tested.dev.evil.example')).toThrow(
+      /not allowed/,
+    );
+    expect(() => assertSafeApiBase('https://tested.dev.evil.example')).toThrow(
+      /not allowed/,
+    );
+  });
+
+  it('allows custom https hosts only with TESTED_ALLOW_CUSTOM_API_URL', () => {
+    expect(
+      resolveApiBase({
+        env: {
+          TESTED_API_URL: 'https://ingest.example/',
+          TESTED_ALLOW_CUSTOM_API_URL: '1',
+        },
+      }),
+    ).toBe('https://ingest.example');
+    expect(assertSafeApiBase('https://ingest.example', { allowCustom: true })).toBe(
+      'https://ingest.example',
+    );
+  });
+
+  it('treats tested.dev and localhost as allowed ingest hosts', () => {
+    expect(isAllowedApiHost('app.tested.dev')).toBe(true);
+    expect(isAllowedApiHost('staging.tested.dev')).toBe(true);
+    expect(isAllowedApiHost('tested.dev')).toBe(true);
+    expect(isAllowedApiHost('app.tested.dev.evil.example')).toBe(false);
+    expect(assertSafeApiBase('https://localhost:8443')).toBe('https://localhost:8443');
   });
 
   it('rejects embedded credentials in API URL', () => {
@@ -248,6 +285,23 @@ describe('parseGitHubRemote', () => {
   it('returns null for unparseable input', () => {
     expect(parseGitHubRemote('')).toBeNull();
     expect(parseGitHubRemote('not-a-url')).toBeNull();
+  });
+});
+
+describe('parseGitHubRepository', () => {
+  it('parses owner/name and rejects unsafe values', () => {
+    expect(parseGitHubRepository('acme/widgets')).toEqual({
+      owner: 'acme',
+      name: 'widgets',
+    });
+    expect(parseGitHubRepository('  acme/widgets  ')).toEqual({
+      owner: 'acme',
+      name: 'widgets',
+    });
+    expect(parseGitHubRepository('acme/foo/bar')).toBeNull();
+    expect(parseGitHubRepository('acme/foo;id')).toBeNull();
+    expect(parseGitHubRepository('')).toBeNull();
+    expect(parseGitHubRepository(undefined)).toBeNull();
   });
 });
 
@@ -551,6 +605,17 @@ describe('executePush', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  it('rejects https token-exfil hosts before contacting the network', async () => {
+    const fetchFn = vi.fn();
+    const result = await executePush(
+      { json: false, token: 't', pr: '1', url: 'https://evil.example' },
+      { cwd: '/repo', env: {}, fetchFn: fetchFn as unknown as typeof fetch, onProgress: () => {} },
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/not allowed/i);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
   it('errors clearly when PR number is missing', async () => {
     const result = await executePush(
       { json: false, token: 't' },
@@ -765,6 +830,49 @@ describe('executePush', () => {
     expect(computeDiffFn).toHaveBeenCalledWith(
       expect.objectContaining({ baseRef: 'origin/develop' }),
     );
+  });
+
+  it('prefers GITHUB_REPOSITORY over git remote origin', async () => {
+    const computeDiffFn = vi.fn(async () => makeDiff());
+    let posted: IngestBody | undefined;
+    const fetchFn: typeof fetch = async (_url, init) => {
+      posted = JSON.parse(String(init?.body)) as IngestBody;
+      return new Response(JSON.stringify({ shareUrl: 'https://app.tested.dev/s/r' }), {
+        status: 200,
+      });
+    };
+    const ctx: GitContext = {
+      git: {
+        raw: async (args: string[]) => {
+          if (args[0] === 'remote') return 'https://github.com/attacker/evil.git\n';
+          if (args[0] === 'config') return 'u\n';
+          return '\n';
+        },
+        revparse: async (args: string[]) =>
+          args[0] === 'HEAD' ? 'h\n' : 'b\n',
+      } as unknown as GitContext['git'],
+      repoRoot: '/repo',
+    };
+
+    const result = await executePush(
+      { json: false, token: 't', pr: '4' },
+      {
+        cwd: '/repo',
+        env: { GITHUB_REPOSITORY: 'acme/widgets' },
+        computeDiffFn: computeDiffFn as unknown as typeof import('../../src/core/computeDiff.js').computeDiff,
+        fetchFn,
+        openRepoFn: async () => ctx,
+        loadConfigFn: async () => makeConfig(),
+        onProgress: () => {},
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(posted?.repo).toEqual({
+      owner: 'acme',
+      name: 'widgets',
+      defaultBranch: 'main',
+    });
   });
 
   it('accepts PR number from GITHUB_PR_NUMBER env', async () => {
