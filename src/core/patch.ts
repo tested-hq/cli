@@ -4,6 +4,15 @@ export interface CoverageTotals {
   executable: number;
   covered: number;
   pct: number;
+  /** Present when executable === 0 — not a 0% coverage result. */
+  empty?: true;
+}
+
+/** Shared copy for humans and agents when the patch has nothing to cover. */
+export const EMPTY_PATCH_REASON = 'no executable lines in the patch';
+
+export function isEmptyPatch(totals: Pick<CoverageTotals, 'executable'>): boolean {
+  return totals.executable === 0;
 }
 
 export interface PatchCoverageResult {

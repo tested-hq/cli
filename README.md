@@ -110,6 +110,18 @@ $ echo $?
 1
 ```
 
+If the patch has no executable lines in scope (tests-only, comments-only, docs-only, or ignored files), the patch gate is **skipped** — not reported as 0% coverage. Project still applies.
+
+```
+$ tested check
+tested.dev — coverage gate  [PASS]
+
+  Patch     -  no executable lines in the patch  [SKIP]
+  Project   64.1%  (threshold 60)  [PASS]
+
+No executable lines in the patch — patch gate skipped. Project threshold met.
+```
+
 If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice on stderr and exits 0 — configs that haven't opted in stay green.
 
 ### GitHub Actions

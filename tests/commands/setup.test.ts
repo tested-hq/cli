@@ -154,5 +154,6 @@ describe('formatSetupHuman', () => {
     expect(text).toContain('doctor');
     expect(text).toContain('tested run');
     expect(text).toContain('tested push');
+    expect(text).toContain('no executable lines');
   });
 });

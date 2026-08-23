@@ -136,6 +136,12 @@ export function formatSetupHuman(opts: {
     ]),
   );
   lines.push('');
+  lines.push(
+    dim(
+      'Patch gate is skipped when the diff has no executable lines (tests-only, docs, comments).',
+    ),
+  );
+  lines.push('');
   lines.push(tip('re-check anytime: tested doctor'));
   lines.push('');
 

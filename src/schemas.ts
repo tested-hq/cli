@@ -41,6 +41,8 @@ export const CoverageTotalsSchema = z.object({
   executable: z.number().int().nonnegative(),
   covered: z.number().int().nonnegative(),
   pct: z.number().min(0).max(100),
+  /** Present when executable === 0 — not a 0% coverage result. */
+  empty: z.literal(true).optional(),
 });
 
 export const ProjectTotalsSchema = CoverageTotalsSchema.extend({

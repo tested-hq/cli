@@ -1,4 +1,5 @@
 import type { DiffOutput, UncoveredRange } from '../schemas.js';
+import { EMPTY_PATCH_REASON, isEmptyPatch } from '../core/patch.js';
 import {
   badge,
   colorPct,
@@ -63,8 +64,8 @@ function formatMetricRow(
 ): string {
   const labelPad = label.padEnd(8);
   if (executable === 0) {
-    const note = emptyNote ?? 'no executable lines';
-    return `  ${labelPad}  ${dim('-'.padEnd(6))}  ${dim(note)}`;
+    const note = emptyNote ?? EMPTY_PATCH_REASON;
+    return `  ${labelPad}  ${dim('-'.padEnd(6))}  ${note}`;
   }
   const pctStr = coloredPctCell(pct);
   const bar = metricBar(pct);
@@ -86,7 +87,7 @@ export function formatHuman(out: DiffOutput, opts: FormatHumanOpts = {}): string
       out.patch.pct,
       out.patch.covered,
       out.patch.executable,
-      'no executable lines in patch',
+      EMPTY_PATCH_REASON,
     ),
   );
 
@@ -102,7 +103,7 @@ export function formatHuman(out: DiffOutput, opts: FormatHumanOpts = {}): string
     const patchPass = out.patch.pct >= opts.thresholds.patch;
     const projectPass = out.project.pct >= opts.thresholds.project;
     // Empty patch (0 executable) is treated as pass for display — nothing to gate.
-    const patchOk = out.patch.executable === 0 ? true : patchPass;
+    const patchOk = isEmptyPatch(out.patch) ? true : patchPass;
     const overall = patchOk && projectPass;
     const details: string[] = [];
     if (!patchOk) {
@@ -113,7 +114,11 @@ export function formatHuman(out: DiffOutput, opts: FormatHumanOpts = {}): string
         `project ${out.project.pct.toFixed(1)}% < ${opts.thresholds.project}%`,
       );
     }
-    const detail = details.length > 0 ? dim(`  ${details.join('; ')}`) : '';
+    const detail = details.length > 0
+      ? dim(`  ${details.join('; ')}`)
+      : isEmptyPatch(out.patch)
+        ? dim(`  ${EMPTY_PATCH_REASON}`)
+        : '';
     lines.push(
       `  ${'Gate'.padEnd(8)}  ${overall ? badge('pass') : badge('fail')}${detail}`,
     );
@@ -127,12 +132,15 @@ export function formatHuman(out: DiffOutput, opts: FormatHumanOpts = {}): string
     }
   }
 
-  if (out.files.length > 0) {
+  if (isEmptyPatch(out.patch)) {
+    lines.push('');
+    lines.push(dim('No executable lines in the patch — patch gate does not apply.'));
+  } else if (out.files.length > 0) {
     lines.push('');
     lines.push(heading('Files in diff:'));
     const anyPatch = out.files.some((f) => f.patchCoverage !== null);
     if (!anyPatch) {
-      lines.push(dim('  (project coverage — no executable lines in patch)'));
+      lines.push(dim(`  (project coverage — ${EMPTY_PATCH_REASON})`));
     }
     for (const f of out.files) {
       // Prefer patch % when the file has executable patch lines; otherwise

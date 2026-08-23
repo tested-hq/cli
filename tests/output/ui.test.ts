@@ -21,6 +21,7 @@ describe('ui helpers', () => {
     expect(badge('fail')).toContain('[FAIL]');
     expect(badge('warn')).toContain('[WARN]');
     expect(badge('info')).toContain('[INFO]');
+    expect(badge('skip')).toContain('[SKIP]');
   });
 
   it('metricBar fills proportionally with ASCII glyphs', () => {

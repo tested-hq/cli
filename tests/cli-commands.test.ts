@@ -18,6 +18,7 @@ const YAML_NO_THRESHOLDS = ['base: main', 'testRunner: vitest', ''].join('\n');
 let repo: string;
 let noThresholdsRepo: string;
 let missingCoverageRepo: string;
+let testsOnlyRepo: string;
 
 beforeAll(async () => {
   const a = await makeTempRepo({
@@ -32,12 +33,23 @@ beforeAll(async () => {
   const c = await makeTempRepo({ yaml: YAML_WITH_THRESHOLDS, hits: [1, 0, 0] });
   missingCoverageRepo = c.repo;
   await rm(join(missingCoverageRepo, 'coverage'), { recursive: true, force: true });
+
+  const d = await makeTempRepo({
+    yaml: YAML_WITH_THRESHOLDS,
+    hits: [1, 1, 1],
+    featureFiles: {
+      'tests/auth.test.ts':
+        'import { a } from "../src/auth.js";\ntest("a", () => { expect(a).toBe(1); });\n',
+    },
+  });
+  testsOnlyRepo = d.repo;
 });
 
 afterAll(async () => {
   await rm(repo, { recursive: true, force: true });
   await rm(noThresholdsRepo, { recursive: true, force: true });
   await rm(missingCoverageRepo, { recursive: true, force: true });
+  await rm(testsOnlyRepo, { recursive: true, force: true });
 });
 
 describe.sequential('public CLI commands (in-process)', () => {
@@ -82,6 +94,16 @@ describe.sequential('public CLI commands (in-process)', () => {
       expect(parsed.project.delta).toBe(0);
     });
 
+    it('explains a tests-only patch instead of 0% coverage', async () => {
+      const result = await invokeCli(['diff', '--base', 'main'], {
+        cwd: testsOnlyRepo,
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('no executable lines in the patch');
+      expect(result.stdout).not.toMatch(/Patch\s+0\.0%/);
+      expect(result.stdout).not.toContain('0/0');
+    });
+
     it('writes a guided error when coverage is missing', async () => {
       const result = await invokeCli(['diff', '--base', 'main'], {
         cwd: missingCoverageRepo,
@@ -120,6 +142,35 @@ describe.sequential('public CLI commands (in-process)', () => {
       });
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toMatch(/coverage file missing|coverage-final\.json not found/i);
+    });
+
+    it('skips the patch gate on a tests-only fixture (not 0% fail)', async () => {
+      const result = await invokeCli(['check', '--base', 'main'], {
+        cwd: testsOnlyRepo,
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('[PASS]');
+      expect(result.stdout).toContain('[SKIP]');
+      expect(result.stdout).toContain('no executable lines in the patch');
+      expect(result.stdout).toContain('patch gate skipped');
+      expect(result.stdout).not.toMatch(/Patch\s+0(?:\.0)?%/);
+    });
+
+    it('json skip is readable to an agent on a tests-only fixture', async () => {
+      const result = await invokeCli(['check', '--base', 'main', '--json'], {
+        cwd: testsOnlyRepo,
+      });
+      expect(result.exitCode).toBe(0);
+      const parsed = JSON.parse(result.stdout) as {
+        overall: string;
+        patch: { pass: boolean; skipped?: boolean; reason?: string };
+        note?: string;
+      };
+      expect(parsed.overall).toBe('pass');
+      expect(parsed.patch.pass).toBe(true);
+      expect(parsed.patch.skipped).toBe(true);
+      expect(parsed.patch.reason).toBe('no executable lines in the patch');
+      expect(parsed.note).toBe('no executable lines in the patch');
     });
   });
 

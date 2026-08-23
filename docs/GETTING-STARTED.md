@@ -88,7 +88,7 @@ If you call Vitest yourself (`pnpm test:coverage`), set
 `coverage.reportOnFailure: true` or pass `--coverage.reportOnFailure` so a
 failed file still leaves `coverage/coverage-final.json`.
 
-**Empty patch** (no new executable lines): patch gate is **skipped**; project still applies.
+**Empty patch** (tests-only, comments-only, docs-only, or ignored files — no executable lines in scope): patch gate is **skipped**, not reported as 0% coverage. Project still applies. Human and `--json` both say `no executable lines in the patch`.
 
 ## 5. Push to tested.dev (share URL)
 

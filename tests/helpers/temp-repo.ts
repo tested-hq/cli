@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { simpleGit } from 'simple-git';
 
 export interface TempRepo {
@@ -14,6 +14,11 @@ export interface MakeTempRepoOpts {
   /** Coverage hits for src/auth.ts statements 0/1/2. Default 1,0,0. */
   hits?: [number, number, number];
   yaml?: string;
+  /**
+   * Files written on the feature branch instead of the default src/auth.ts
+   * edit. Use for tests-only / docs-only fixtures.
+   */
+  featureFiles?: Record<string, string>;
 }
 
 /**
@@ -40,12 +45,22 @@ export async function makeTempRepo(opts: MakeTempRepoOpts = {}): Promise<TempRep
   await git.commit('init', { '--no-verify': null });
 
   await git.checkoutLocalBranch('feature');
-  await writeFile(
-    join(repo, 'src/auth.ts'),
-    'export const a = 1;\nexport const b = 2;\nexport const c = 3;\n',
-  );
+  if (opts.featureFiles) {
+    for (const [rel, contents] of Object.entries(opts.featureFiles)) {
+      const abs = join(repo, rel);
+      await mkdir(dirname(abs), { recursive: true });
+      await writeFile(abs, contents);
+    }
+  } else {
+    await writeFile(
+      join(repo, 'src/auth.ts'),
+      'export const a = 1;\nexport const b = 2;\nexport const c = 3;\n',
+    );
+  }
   await git.add('.');
-  await git.commit('add b and c', { '--no-verify': null });
+  await git.commit(opts.featureFiles ? 'feature changes' : 'add b and c', {
+    '--no-verify': null,
+  });
 
   const authPath = join(repo, 'src/auth.ts');
   const hits = opts.hits ?? ([1, 0, 0] as [number, number, number]);

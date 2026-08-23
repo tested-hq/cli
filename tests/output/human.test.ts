@@ -64,24 +64,21 @@ describe('formatHuman', () => {
   it('explains empty patch (0/0) instead of looking broken', () => {
     const empty: DiffOutput = {
       ...sample,
-      patch: { executable: 0, covered: 0, pct: 0 },
-      files: [
-        {
-          path: 'src/util.ts',
-          patchCoverage: null,
-          projectCoverage: 90,
-          uncoveredRanges: [],
-        },
-      ],
+      patch: { executable: 0, covered: 0, pct: 0, empty: true },
+      files: [],
     };
-    const text = formatHuman(empty, { tips: false });
-    expect(text).toContain('no executable lines in patch');
+    const text = formatHuman(empty, {
+      thresholds: { patch: 80, project: 60 },
+      tips: false,
+    });
+    expect(text).toContain('no executable lines in the patch');
+    expect(text).toContain('patch gate does not apply');
+    expect(text).toContain('[PASS]');
     expect(text).not.toMatch(/Patch\s+0\.0%/);
-    // File rows fall back to project % instead of repeating the empty-patch note.
-    expect(text).toContain('src/util.ts');
-    expect(text).toContain('90.0%');
-    expect(text).toContain('project coverage');
-    expect(text).not.toMatch(/src\/util\.ts[\s\S]*no executable lines in patch/);
+    expect(text).not.toContain('0/0');
+    // Do not dump project files / uncovered ranges — that looks like a miss.
+    expect(text).not.toContain('Files in diff:');
+    expect(text).not.toContain('src/util.ts');
   });
 
   it('wraps long uncovered range lists across lines', () => {
