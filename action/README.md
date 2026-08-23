@@ -23,7 +23,7 @@ jobs:
 
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.3
+          version: 0.1.4
 ```
 
 ## Gate + share URL
@@ -31,7 +31,7 @@ jobs:
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.3
+    version: 0.1.4
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -41,12 +41,12 @@ jobs:
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `version` | `0.1.3` | npm version of `@tested/cli` |
+| `version` | `0.1.4` | npm version of `@tested/cli` |
 | `cli-path` | _(empty)_ | Local checkout of `tested-hq/cli` (skips npm) |
 | `cli-repository` | `tested-hq/cli` | GitHub `owner/name` for the git fallback |
 | `cli-ref` | _(empty)_ | Optional git ref instead of npm |
 | `working-directory` | `.` | Project root with `.tested.yaml` + coverage |
-| `base` | _(empty)_ | Override git base. Default: PR base SHA, or previous commit on push. Fetched if missing (no `fetch-depth: 0` required). |
+| `base` | _(empty)_ | Override git base for check and push. Default: PR base SHA, or previous commit on push. Fetched if missing (no `fetch-depth: 0` required). |
 | `push` | `false` | Run `tested push` after check |
 | `pr-number` | _(empty)_ | PR number for push (else `pull_request` event) |
 | `token` | _(empty)_ | Ingest token → `TESTED_TOKEN` |

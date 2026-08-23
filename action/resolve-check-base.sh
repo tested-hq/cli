@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Resolve a git base for `tested check` on a shallow GitHub Actions checkout.
+# Resolve a git base for `tested check` / `tested push` on a shallow
+# GitHub Actions checkout.
 #
 # Env (set by action.yml):
 #   INPUT_BASE       optional action input (wins)
