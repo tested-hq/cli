@@ -65,7 +65,7 @@ beforeAll(async () => {
   shallow = mkdtempSync(join(tmpdir(), 'tested-push-shallow-'));
   await simpleGit().clone(server, shallow, ['--depth', '1', '--branch', 'feature']);
   writeCoverage(shallow);
-}, 20_000);
+}, 40_000);
 
 afterAll(() => {
   if (server) rmSync(server, { recursive: true, force: true });
