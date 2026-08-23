@@ -122,6 +122,16 @@ export function formatCliError(message: string): string {
     ]);
   }
 
+  if (/git base ref .+ not found/i.test(m)) {
+    const refMatch = m.match(/git base ref "([^"]+)" not found/i);
+    const ref = refMatch?.[1] ?? 'the requested ref';
+    return errorBlock(`git base ref "${ref}" not found`, [
+      'That ref is not in this repository.',
+      'Pass --base HEAD~1 (or a branch / commit that exists)',
+      'or set `base:` in .tested.yaml',
+    ]);
+  }
+
   if (/invalid PR number/i.test(m)) {
     return errorBlock('invalid PR number', [
       m.replace(/^invalid PR number\s*/i, '').replace(/^—\s*/, '') || m,

@@ -81,6 +81,33 @@ describe('tested run action', () => {
     }
   });
 
+  it('does not forward --json to the runner and prints tested JSON', async () => {
+    const cwd = makeCwd(true);
+    spawnMock.mockImplementation(() => fakeChild(1));
+    try {
+      const result = await invokeCli(['run', '--json'], {
+        cwd,
+        waitForProcessExit: true,
+      });
+      expect(result.exitCode).toBe(1);
+      expect(spawnMock).toHaveBeenCalledOnce();
+      const [, args] = spawnMock.mock.calls[0] as [string, string[]];
+      expect(args).not.toContain('--json');
+      const parsed = JSON.parse(result.stdout) as {
+        schemaVersion: number;
+        exitCode: number;
+        coverageWritten: boolean;
+        args: string[];
+      };
+      expect(parsed.schemaVersion).toBe(1);
+      expect(parsed.exitCode).toBe(1);
+      expect(parsed.coverageWritten).toBe(true);
+      expect(parsed.args).not.toContain('--json');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('rejects --config whose next token is another flag', async () => {
     const cwd = makeCwd(false);
     try {

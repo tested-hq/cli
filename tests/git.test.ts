@@ -7,9 +7,11 @@ import {
   currentBranch,
   gitUserName,
   headSha,
+  missingGitRefMessage,
   openRepo,
   remoteUrl,
   resolveBase,
+  resolveEffectiveBase,
   unifiedDiff,
 } from '../src/git.js';
 
@@ -137,6 +139,13 @@ describe('git helpers', () => {
       repoRoot: repo,
     };
     expect(await gitUserName(ctx)).toBeNull();
+  });
+
+  it('resolveBase throws a friendly error when the ref is missing', async () => {
+    const ctx = await openRepo(repo);
+    await expect(resolveBase(ctx, 'origin/main')).rejects.toThrow(
+      missingGitRefMessage('origin/main'),
+    );
   });
 
   it('gitUserName returns null when config throws', async () => {

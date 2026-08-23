@@ -132,28 +132,22 @@ export function formatHuman(out: DiffOutput, opts: FormatHumanOpts = {}): string
     }
   }
 
+  const patchFiles = out.files.filter((f) => f.patchCoverage !== null);
+
   if (isEmptyPatch(out.patch)) {
     lines.push('');
     lines.push(dim('No executable lines in the patch — patch gate does not apply.'));
-  } else if (out.files.length > 0) {
+  } else if (patchFiles.length > 0) {
     lines.push('');
     lines.push(heading('Files in diff:'));
-    const anyPatch = out.files.some((f) => f.patchCoverage !== null);
-    if (!anyPatch) {
-      lines.push(dim(`  (project coverage — ${EMPTY_PATCH_REASON})`));
-    }
-    for (const f of out.files) {
-      // Prefer patch % when the file has executable patch lines; otherwise
-      // show project % so agents still see what to fix.
-      const hasPatch = f.patchCoverage !== null;
-      const pctPart = hasPatch
-        ? coloredPctCell(f.patchCoverage!)
-        : coloredPctCell(f.projectCoverage);
-      lines.push(`  ${pctPart}  ${f.path}`);
+    for (const f of patchFiles) {
+      const pct = f.patchCoverage;
+      if (pct === null) continue;
+      lines.push(`  ${coloredPctCell(pct)}  ${f.path}`);
       if (f.uncoveredRanges.length > 0) {
         const ranges = formatRangeList(f.uncoveredRanges);
         lines.push(dim(`             uncovered: ${ranges}`));
-      } else if (hasPatch) {
+      } else {
         lines.push(dim('             fully covered in patch'));
       }
     }

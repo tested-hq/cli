@@ -95,6 +95,54 @@ describe('computeDiff', () => {
     expect(output.project.delta).toBe(66.7 - 100);
   });
 
+  it('falls back to HEAD~1 when diffing on the base branch itself', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'tested-computediff-main-'));
+    const git = simpleGit({ baseDir: tempDir });
+    await git.init(['-b', 'main']);
+    await git.addConfig('user.email', 'test@tested.dev');
+    await git.addConfig('user.name', 'Test');
+    const root = (await git.revparse(['--show-toplevel'])).trim();
+    await mkdir(join(root, 'src'));
+    await writeFile(join(root, 'src/auth.ts'), 'export const a = 1;\n');
+    await git.add('.');
+    await git.commit('init', { '--no-verify': null });
+    await writeFile(
+      join(root, 'src/auth.ts'),
+      'export const a = 1;\nexport const b = 2;\nexport const c = 3;\n',
+    );
+    await git.add('.');
+    await git.commit('add b and c', { '--no-verify': null });
+    const authPath = join(root, 'src/auth.ts');
+    const cov = {
+      [authPath]: {
+        path: authPath,
+        statementMap: {
+          '0': { start: { line: 1, column: 0 }, end: { line: 1, column: 20 } },
+          '1': { start: { line: 2, column: 0 }, end: { line: 2, column: 20 } },
+          '2': { start: { line: 3, column: 0 }, end: { line: 3, column: 20 } },
+        },
+        s: { '0': 1, '1': 1, '2': 0 },
+      },
+    };
+    await mkdir(join(root, 'coverage'));
+    await writeFile(join(root, 'coverage/coverage-final.json'), JSON.stringify(cov));
+    try {
+      const config = await loadConfig({ cwd: root });
+      const output = await computeDiff({ cwd: root, config, baseRef: 'main' });
+      expect(output.base).toBe('HEAD~1');
+      expect(output.patch.executable).toBeGreaterThan(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('throws a friendly error when --base origin/main is missing', async () => {
+    const config = await loadConfig({ cwd: repo });
+    await expect(
+      computeDiff({ cwd: repo, config, baseRef: 'origin/main' }),
+    ).rejects.toThrow(/git base ref "origin\/main" not found/);
+  });
+
   it('treats an empty baseline as 0% when computing delta', async () => {
     const config = await loadConfig({ cwd: repo });
     const empty = join(repo, 'coverage/empty-base.json');

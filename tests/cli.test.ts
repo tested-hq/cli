@@ -5,15 +5,17 @@ describe('createProgram', () => {
   it('exposes name and version', () => {
     const program = createProgram();
     expect(program.name()).toBe('tested');
-    expect(program.version()).toBe('0.1.5');
+    expect(program.version()).toBe('0.1.6');
   });
 
-  it('registers the push, doctor, and setup commands', () => {
+  it('registers the push, doctor, setup, token, and whoami commands', () => {
     const program = createProgram();
     const names = program.commands.map((c) => c.name());
     expect(names).toContain('push');
     expect(names).toContain('doctor');
     expect(names).toContain('setup');
+    expect(names).toContain('token');
+    expect(names).toContain('whoami');
   });
 
   it('orders commands by workflow', () => {
@@ -27,6 +29,8 @@ describe('createProgram', () => {
       'diff',
       'check',
       'push',
+      'token',
+      'whoami',
       'explain',
       'ignores',
     ]);

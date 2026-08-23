@@ -69,6 +69,15 @@ describe('ui helpers', () => {
     expect(block).toContain('tested diff');
   });
 
+  it('formatCliError expands a missing git base ref', () => {
+    const block = formatCliError('git base ref "origin/main" not found');
+    expect(block).toContain('error: git base ref "origin/main" not found');
+    expect(block).toContain('That ref is not in this repository');
+    expect(block).toContain('--base HEAD~1');
+    expect(block).toContain('.tested.yaml');
+    expect(block).not.toMatch(/fatal:/);
+  });
+
   it('formatCliError expands missing ingest token and invalid PR number', () => {
     const token = formatCliError('missing ingest token');
     expect(token).toContain('error: missing ingest token');

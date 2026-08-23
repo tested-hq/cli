@@ -6,14 +6,24 @@ export function formatIgnoresList(patterns: readonly string[], asJson: boolean):
   return patterns.join('\n');
 }
 
+async function printIgnores(asJson: boolean): Promise<void> {
+  const config = await loadConfig({ cwd: process.cwd() });
+  process.stdout.write(formatIgnoresList(config.ignores, asJson) + '\n');
+}
+
 export function registerIgnoresCommand(program: Command): void {
-  const cmd = program.command('ignores').description('Inspect the canonical ignore list');
+  const cmd = program
+    .command('ignores')
+    .description('List ignore patterns (defaults + user). `list` is optional.')
+    .option('--json', 'Emit JSON', false)
+    .action(async (opts: { json: boolean }) => {
+      await printIgnores(opts.json);
+    });
   cmd
     .command('list')
     .description('Print all ignore patterns (defaults + user)')
     .option('--json', 'Emit JSON', false)
     .action(async (opts: { json: boolean }) => {
-      const config = await loadConfig({ cwd: process.cwd() });
-      process.stdout.write(formatIgnoresList(config.ignores, opts.json) + '\n');
+      await printIgnores(opts.json);
     });
 }

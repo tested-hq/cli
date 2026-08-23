@@ -9,10 +9,10 @@ branding:
 inputs:
   version:
     description: >
-      npm version of @tested/cli to install (e.g. 0.1.5).
+      npm version of @tested/cli to install (e.g. 0.1.6).
       Ignored when cli-path or cli-ref is set.
     required: false
-    default: '0.1.5'
+    default: '0.1.6'
   cli-path:
     description: >
       Local path to a checkout of tested-hq/cli (already on the runner).

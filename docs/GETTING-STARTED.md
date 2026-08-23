@@ -68,17 +68,21 @@ Exit **0** when required checks pass; **1** on hard failures (or unsafe API URL 
 ## 3. Init only (if you skip setup)
 
 ```bash
-tested init --force
+tested init
 # writes .tested.yaml  (vitest/jest/pytest, thresholds, ignores)
+# no git hook unless you pass --hooks (in CI / non-TTY, --hooks also needs --force)
 ```
 
 ## 4. Local coverage
 
 ```bash
 tested run              # coverage even if tests fail (Vitest --coverage.reportOnFailure)
-tested diff             # human report (exit 0; not the gate)
+tested run --json       # tested summary only; --json is not forwarded to Vitest
+tested diff             # human report (exit 0; not the gate). File list is the patch.
 tested diff --json      # schema-v1 for agents / CI
 tested check            # exit 1 if below thresholds
+tested token            # mint URL from origin + TESTED_TOKEN / TESTED_TOKEN_FILE / TESTED_INGEST_TOKEN
+tested whoami           # token set or not (value never printed)
 ```
 
 Do not chain `tested run && tested diff`: a failing suite still writes coverage,
@@ -138,7 +142,7 @@ jobs:
       - run: pnpm test -- --coverage
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.5
+          version: 0.1.6
           push: true
           pr-number: ${{ github.event.pull_request.number }}
           token: ${{ secrets.TESTED_TOKEN }}

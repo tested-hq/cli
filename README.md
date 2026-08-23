@@ -25,7 +25,7 @@ CI uses the composite Action (`tested-hq/cli/action@main`). It installs `@tested
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.5
+    version: 0.1.6
     token: ${{ secrets.TESTED_TOKEN }}
 ```
 
@@ -38,6 +38,8 @@ tested run              # writes coverage even if tests fail
 tested diff             # report (exit 0)
 tested check            # gate (exit 1 if under threshold)
 tested push --pr <n>    # needs TESTED_TOKEN
+tested token            # mint URL from git remote + env names
+tested whoami           # whether a token is set (never prints it)
 ```
 
 ## Security
@@ -68,7 +70,7 @@ tested push --pr <n>        # share URL on app.tested.dev (needs token)
 
 Human output is monochrome editorial craft: restrained color via picocolors (green / yellow / red for status only). ASCII badges (`[PASS]` / `[FAIL]`) and metric bars. Honors `NO_COLOR` and non-TTY (no ornaments when color is unsupported).
 
-`--json` on every command keeps agent schemas stable.
+`--json` is available on setup, doctor, init, run, diff, check, push, token, whoami, explain, and ignores. `tested run --json` is tested's own summary (command, exit, coverage path). It is not forwarded to the test runner.
 
 ## Dogfood
 
@@ -133,7 +135,7 @@ If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice o
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.5
+    version: 0.1.6
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -176,8 +178,9 @@ $ tested push
 
 ### `tested run` extra args
 
-Extra args are forwarded to the runner via argv (no shell). In CI /
-non-interactive mode / when `TESTED_SAFE_RUN=1`:
+`tested run` writes `coverage/coverage-final.json` even when the suite fails (Vitest `--coverage.reportOnFailure`). Extra args are forwarded to the runner via argv (no shell). `--json` is consumed by tested and is not forwarded.
+
+In CI / non-interactive mode / when `TESTED_SAFE_RUN=1`:
 
 - `--watch`, `--watchAll`, `-w` are **rejected** (hang risk)
 - `--config` / `-c` paths that resolve **outside the repo root** are **rejected**

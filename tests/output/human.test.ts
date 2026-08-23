@@ -131,6 +131,30 @@ describe('formatHuman', () => {
     expect(text).toContain('fully covered in patch');
   });
 
+  it('lists only files that are in the patch', () => {
+    const mixed: DiffOutput = {
+      ...sample,
+      files: [
+        {
+          path: 'src/auth.ts',
+          patchCoverage: 50,
+          projectCoverage: 70,
+          uncoveredRanges: [{ start: 5, end: 7, kind: 'line' }],
+        },
+        {
+          path: 'src/untouched.ts',
+          patchCoverage: null,
+          projectCoverage: 90,
+          uncoveredRanges: [{ start: 1, end: 4, kind: 'line' }],
+        },
+      ],
+    };
+    const text = formatHuman(mixed, { tips: false });
+    expect(text).toContain('src/auth.ts');
+    expect(text).toContain('5-7');
+    expect(text).not.toContain('src/untouched.ts');
+  });
+
   it('shows a negative project delta', () => {
     const withDelta: DiffOutput = {
       ...sample,
