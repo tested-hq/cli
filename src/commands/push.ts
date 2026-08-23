@@ -9,8 +9,12 @@ import {
   remoteUrl,
   currentBranch,
   gitUserName,
+  tryRevparse,
+  fetchOriginRef,
+  resolveAfterFetch,
   type GitContext,
 } from '../git.js';
+import { assertSafeGitRef } from '../git-ref.js';
 import type { DiffOutput, TestedConfig } from '../schemas.js';
 import type { TestReport } from '../core/junit.js';
 import { parseJunitToTestReport } from '../core/junit.js';
@@ -374,6 +378,180 @@ export function toBranchName(ref: string): string {
     .replace(/^origin\//, '');
 }
 
+const GITHUB_COMMIT_SHA_RE = /^[0-9a-f]{40,64}$/i;
+
+export interface GitHubPullBase {
+  ref: string;
+  sha: string;
+}
+
+export interface TokenMintIdentity {
+  owner?: string | null;
+  name?: string | null;
+}
+
+function githubApiToken(env: NodeJS.ProcessEnv): string | null {
+  const raw = env.GITHUB_TOKEN ?? env.GH_TOKEN;
+  if (raw === undefined || raw === '') return null;
+  return raw;
+}
+
+function parseGitHubPullBase(parsed: unknown): GitHubPullBase | null {
+  if (!parsed || typeof parsed !== 'object' || !('base' in parsed)) return null;
+  const base = parsed.base;
+  if (!base || typeof base !== 'object') return null;
+  const ref = 'ref' in base ? base.ref : undefined;
+  const sha = 'sha' in base ? base.sha : undefined;
+  if (typeof ref !== 'string' || typeof sha !== 'string') return null;
+  if (!GITHUB_COMMIT_SHA_RE.test(sha)) return null;
+  try {
+    return { ref: assertSafeGitRef(ref), sha: assertSafeGitRef(sha) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * PR base from GitHub (same payload the Action reads from the event).
+ * Public repos work without a token; GITHUB_TOKEN / GH_TOKEN for private.
+ * Failures are null — callers fall through to origin / fetch / the friendly error.
+ */
+export async function fetchGitHubPullBase(opts: {
+  owner: string;
+  name: string;
+  prNumber: number;
+  fetchFn?: typeof fetch;
+  env?: NodeJS.ProcessEnv;
+}): Promise<GitHubPullBase | null> {
+  if (!parseGitHubRepository(`${opts.owner}/${opts.name}`)) return null;
+  if (!Number.isInteger(opts.prNumber) || opts.prNumber <= 0) return null;
+  const fetchFn = opts.fetchFn ?? globalThis.fetch;
+  const url = `https://api.github.com/repos/${opts.owner}/${opts.name}/pulls/${opts.prNumber}`;
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'tested-cli',
+  };
+  const token = githubApiToken(opts.env ?? process.env);
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let res: Response;
+  try {
+    res = await fetchFn(url, { method: 'GET', redirect: 'manual', headers });
+  } catch {
+    return null;
+  }
+  if (res.status !== 200) return null;
+  try {
+    return parseGitHubPullBase(JSON.parse(await res.text()));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Git base for `tested push --pr` when `--base` is unset.
+ *
+ * Prefer a local or `origin/<base>` ref, then the PR base SHA from GitHub,
+ * then `git fetch --depth=1 origin <sha|branch>` (the Action path).
+ * Returns undefined so computeDiff can raise the 0.1.6 missing-base error.
+ */
+export async function resolvePrPushBase(opts: {
+  ctx: GitContext;
+  requested: string;
+  prNumber: number;
+  owner?: string | null;
+  name?: string | null;
+  fetchFn?: typeof fetch;
+  env?: NodeJS.ProcessEnv;
+  onProgress?: (msg: string) => void;
+}): Promise<string | undefined> {
+  let requested: string;
+  try {
+    requested = assertSafeGitRef(opts.requested);
+  } catch {
+    return undefined;
+  }
+  if (await tryRevparse(opts.ctx, requested)) return requested;
+
+  const branch = toBranchName(requested) || 'main';
+  const originRef = `origin/${branch}`;
+  if (originRef !== requested && (await tryRevparse(opts.ctx, originRef))) {
+    return originRef;
+  }
+
+  let prBase: GitHubPullBase | null = null;
+  if (opts.owner && opts.name) {
+    prBase = await fetchGitHubPullBase({
+      owner: opts.owner,
+      name: opts.name,
+      prNumber: opts.prNumber,
+      ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
+      ...(opts.env ? { env: opts.env } : {}),
+    });
+  }
+  if (prBase && (await tryRevparse(opts.ctx, prBase.sha))) return prBase.sha;
+
+  const fetchTargets: string[] = [];
+  if (prBase) {
+    fetchTargets.push(prBase.sha, prBase.ref);
+  }
+  fetchTargets.push(branch);
+
+  let announced = false;
+  const seen = new Set<string>();
+  for (const target of fetchTargets) {
+    if (seen.has(target)) continue;
+    seen.add(target);
+    let spec: string;
+    try {
+      spec = assertSafeGitRef(target);
+    } catch {
+      continue;
+    }
+    if (!announced) {
+      announced = true;
+      opts.onProgress?.('fetching base…');
+    }
+    if (!(await fetchOriginRef(opts.ctx, spec))) continue;
+    const resolved = await resolveAfterFetch(opts.ctx, spec);
+    if (resolved) return resolved;
+    if (prBase && (await tryRevparse(opts.ctx, prBase.sha))) return prBase.sha;
+  }
+
+  return undefined;
+}
+
+/** Best-effort owner/name for mint URLs and the GitHub PR lookup. */
+export async function peekRepoIdentity(opts: {
+  owner?: string;
+  name?: string;
+  env: NodeJS.ProcessEnv;
+  ctx: GitContext;
+}): Promise<TokenMintIdentity> {
+  let owner = opts.owner;
+  let name = opts.name;
+  if (!owner || !name) {
+    const fromActions = parseGitHubRepository(opts.env.GITHUB_REPOSITORY);
+    if (fromActions) {
+      owner = owner ?? fromActions.owner;
+      name = name ?? fromActions.name;
+    }
+  }
+  if (!owner || !name) {
+    try {
+      const origin = await remoteUrl(opts.ctx, 'origin');
+      const parsed = parseGitHubRemote(origin);
+      if (parsed) {
+        owner = owner ?? parsed.owner;
+        name = name ?? parsed.name;
+      }
+    } catch {
+      // Ingest still reports a hard origin error after the diff.
+    }
+  }
+  return { owner: owner ?? null, name: name ?? null };
+}
+
 export function buildIngestBody(input: {
   owner: string;
   name: string;
@@ -637,6 +815,7 @@ export function formatPushError(
   status: number,
   message: string,
   code?: string,
+  identity?: TokenMintIdentity,
 ): string {
   if (status === 0) {
     return errorBlock(message);
@@ -648,12 +827,13 @@ export function formatPushError(
     normalized.includes('token_required') ||
     normalized.includes('invalid token') ||
     normalized.includes('unauthorized') ||
+    normalized.includes('invalid credentials') ||
     status === 401
   ) {
     return errorBlock('ingest auth failed', [
       message,
       '',
-      ...tokenMintGuidance(),
+      ...tokenMintGuidance(identity),
       'or --token',
     ]);
   }
@@ -773,14 +953,34 @@ export async function executePush(
   }
   const config: TestedConfig = await loadConfigFn({ cwd: deps.cwd });
   const ctx = await openRepoFn(deps.cwd);
+  const peeked = await peekRepoIdentity({
+    ...(cli.owner !== undefined ? { owner: cli.owner } : {}),
+    ...(cli.name !== undefined ? { name: cli.name } : {}),
+    env,
+    ctx,
+  });
 
-  onProgress('computing diff…');
   let diff: DiffOutput;
   try {
+    let baseOverride = cli.base;
+    if (baseOverride === undefined && prNumber !== null) {
+      const resolved = await resolvePrPushBase({
+        ctx,
+        requested: config.base,
+        prNumber,
+        owner: peeked.owner,
+        name: peeked.name,
+        fetchFn,
+        env,
+        onProgress,
+      });
+      if (resolved !== undefined) baseOverride = resolved;
+    }
+    onProgress('computing diff…');
     diff = await computeDiffFn({
       cwd: deps.cwd,
       config,
-      ...(cli.base !== undefined ? { baseRef: cli.base } : {}),
+      ...(baseOverride !== undefined ? { baseRef: baseOverride } : {}),
       ctx,
     });
   } catch (err) {
@@ -788,8 +988,8 @@ export async function executePush(
     return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
   }
 
-  let owner = cli.owner;
-  let name = cli.name;
+  let owner = cli.owner ?? peeked.owner ?? undefined;
+  let name = cli.name ?? peeked.name ?? undefined;
   if (!owner || !name) {
     const fromActions = parseGitHubRepository(env.GITHUB_REPOSITORY);
     if (fromActions) {
@@ -885,7 +1085,10 @@ export async function executePush(
     return {
       exitCode: 1,
       stdout: '',
-      stderr: formatPushError(result.status, result.message, result.code),
+      stderr: formatPushError(result.status, result.message, result.code, {
+        owner,
+        name,
+      }),
     };
   }
 

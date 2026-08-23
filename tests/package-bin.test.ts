@@ -62,8 +62,8 @@ describe('package honesty', () => {
   const actionYml = readFileSync(join(root, 'action/action.yml'), 'utf8');
   const runPushSh = readFileSync(join(root, 'action/run-push.sh'), 'utf8');
 
-  it('is 0.1.6 with engines.node >=24', () => {
-    expect(pkg.version).toBe('0.1.6');
+  it('is 0.1.7 with engines.node >=24', () => {
+    expect(pkg.version).toBe('0.1.7');
     expect(pkg.engines.node).toBe('>=24');
     expect(readFileSync(join(root, '.nvmrc'), 'utf8').trim()).toBe('24');
     expect(CLI_VERSION).toBe(pkg.version);
@@ -89,7 +89,7 @@ describe('package honesty', () => {
   });
 
   it('defaults the Action version input to this package version', () => {
-    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.6'/);
+    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.7'/);
     expect(actionYml).toContain('install-cli.sh');
     expect(actionYml).toContain('run-push.sh');
     expect(actionYml).toMatch(/tested check --base/);
