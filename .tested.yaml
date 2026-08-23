@@ -1,0 +1,12 @@
+# Config schema — see https://tested.dev/docs/config
+base: main
+testRunner: vitest
+thresholds:
+  patch: 80
+  project: 90
+ignores:
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/coverage/**"

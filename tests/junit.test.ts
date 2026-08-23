@@ -52,4 +52,31 @@ describe('junit parse', () => {
     ]);
     expect(report.totals.flaky).toBe(1);
   });
+
+  it('parses error/skipped messages, nameless cases, and failure inner text', () => {
+    const xml = `<?xml version="1.0"?>
+<testsuite>
+  <testcase classname="a" name="boom" time="0.1">
+    <error message="kaboom"/>
+  </testcase>
+  <testcase name="skip-me" time="0">
+    <skipped message="later"/>
+  </testcase>
+  <testcase name="" time="1"/>
+  <testcase name="inner-fail" time="bad">
+    <failure>stack
+trace</failure>
+  </testcase>
+  <testcase name="self-close" time="0.01"/>
+</testsuite>`;
+    const cases = parseJunitXml(xml);
+    expect(cases.find((c) => c.name === 'boom')?.status).toBe('error');
+    expect(cases.find((c) => c.name === 'skip-me')?.message).toBe('later');
+    expect(cases.some((c) => c.name === '')).toBe(false);
+    expect(cases.find((c) => c.name === 'inner-fail')?.message).toMatch(/stack/);
+    const report = parseJunitToTestReport(xml);
+    expect(report.totals.errors).toBe(1);
+    expect(report.totals.skipped).toBe(1);
+    expect(report.failures.some((f) => f.name === 'inner-fail')).toBe(true);
+  });
 });

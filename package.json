@@ -18,6 +18,7 @@
     "dev": "tsx bin/tested.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "prepare": "node ./scripts/prepare.mjs",
     "prepublishOnly": "pnpm run build"

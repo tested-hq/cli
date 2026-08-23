@@ -22,4 +22,13 @@ describe('loadConfig', () => {
     expect(cfg.coverage.path).toBe('./build/coverage-final.json');
     expect(cfg.base).toBe('origin/develop');
   });
+
+  it('rethrows non-ENOENT errors when reading .tested.yaml', async () => {
+    const { mkdtempSync, mkdirSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'tested-cfg-'));
+    mkdirSync(join(dir, '.tested.yaml'));
+    await expect(loadConfig({ cwd: dir })).rejects.toMatchObject({ code: 'EISDIR' });
+    rmSync(dir, { recursive: true, force: true });
+  });
 });

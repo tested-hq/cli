@@ -27,6 +27,13 @@ describe('parseIstanbul', () => {
       .rejects.toThrow(/coverage-final.json not found/);
   });
 
+  it('rethrows non-ENOENT read errors', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'istanbul-isdir-'));
+    await expect(parseIstanbul({ path: dir, repoRoot: '/repo' })).rejects.toMatchObject({
+      code: 'EISDIR',
+    });
+  });
+
   it('skips coverage entries whose paths escape repoRoot', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'istanbul-escape-'));
     const cov = join(dir, 'coverage-final.json');
