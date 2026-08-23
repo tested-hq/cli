@@ -20,7 +20,7 @@ pnpm add -D @tested/cli
 npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
 ```
 
-CLI runs on Node ≥ 20.19 (doctor warns below 22). GitHub Action defaults to Node **24**.
+CLI and GitHub Action require Node 24+.
 
 From this repo checkout:
 
@@ -54,7 +54,7 @@ Checks (badges `[PASS]` / `[FAIL]` / `[WARN]` / `[INFO]`):
 
 | Check | Required | Notes |
 |-------|----------|--------|
-| Node.js | warn below 22 | CLI runs on Node 20; 22+ recommended. Not a hard fail. |
+| Node.js | yes | Node >= 24. Fail below 24. |
 | Git repository | yes | |
 | `.tested.yaml` | yes | `tested setup` / `tested init` |
 | Coverage file | warn | default `coverage/coverage-final.json` — run `tested run` |
@@ -138,7 +138,7 @@ jobs:
       - run: pnpm test -- --coverage
       - uses: tested-hq/cli/action@main
         with:
-          cli-ref: main          # pin a commit SHA in production
+          version: 0.1.2
           push: true
           pr-number: ${{ github.event.pull_request.number }}
           token: ${{ secrets.TESTED_TOKEN }}
@@ -147,8 +147,8 @@ jobs:
 What the action does:
 
 1. `actions/setup-node` **24**
-2. Install CLI from **git** (`cli-ref`) or **local path** (`cli-path`)
-3. `pnpm install && pnpm build` → `dist/tested.js`
+2. `npm i -g @tested/cli@<version>` (or build from `cli-path` / `cli-ref`)
+3. `tested` on PATH
 4. `tested check` (Action defaults `--base` to the PR base SHA / previous push commit)
 5. Optional `tested push` when `push: true`
 
@@ -212,4 +212,4 @@ paths outside the repository root.
 - **Minimal chrome** — status color only; `NO_COLOR` respected  
 - **Errors teach** — next command, not a stack dump  
 - **Agents first** — stable JSON; exit codes mean gate  
-- **Action for CI** — `tested-hq/cli/action@main`; pin `cli-ref` to a SHA in production  
+- **Action for CI** — `tested-hq/cli/action@main`; pin `version` in production  

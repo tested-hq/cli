@@ -22,7 +22,7 @@ jobs:
         with:
           version: 11.3.0
           # standalone install — bypasses the runner's default Node
-          # (which is too old for pnpm 11.3.0's engines.node >=22.13)
+          # (too old for this package's engines.node)
           standalone: true
 
       - uses: actions/setup-node@v4

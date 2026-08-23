@@ -7,22 +7,30 @@ branding:
   color: 'gray-dark'
 
 inputs:
+  version:
+    description: >
+      npm version of @tested/cli to install (e.g. 0.1.2).
+      Ignored when cli-path or cli-ref is set.
+    required: false
+    default: '0.1.2'
   cli-path:
     description: >
       Local path to a checkout of tested-hq/cli (already on the runner).
-      When set, the action builds from this path instead of cloning from git.
+      When set, the action builds from this path instead of npm.
     required: false
     default: ''
   cli-repository:
-    description: 'GitHub repository to install the CLI from (owner/name).'
+    description: >
+      GitHub repository for the git fallback (owner/name).
+      Used only when cli-ref is set.
     required: false
     default: 'tested-hq/cli'
   cli-ref:
     description: >
-      Git ref (branch, tag, or full commit SHA) of tested-hq/cli to install.
-      Pin to a commit SHA in production for reproducible CI.
+      Optional git ref (branch, tag, or commit SHA) to install instead of npm.
+      Leave empty (default) to install @tested/cli from npm.
     required: false
-    default: 'main'
+    default: ''
   working-directory:
     description: 'Project directory that contains coverage + .tested.yaml.'
     required: false
@@ -75,56 +83,16 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Enable corepack (pnpm)
-      shell: bash
-      run: corepack enable
-
-    - name: Resolve CLI source
+    - name: Install CLI
       id: cli
       shell: bash
-      run: |
-        set -euo pipefail
-        if [ -n "${{ inputs.cli-path }}" ]; then
-          SRC="${{ inputs.cli-path }}"
-          if [ ! -d "$SRC" ]; then
-            echo "cli-path does not exist: $SRC" >&2
-            exit 1
-          fi
-          echo "source=path" >> "$GITHUB_OUTPUT"
-          echo "dir=$SRC" >> "$GITHUB_OUTPUT"
-        else
-          DEST="${{ github.action_path }}/.cli-src"
-          REF="${{ inputs.cli-ref }}"
-          REPO="${{ inputs.cli-repository }}"
-          rm -rf "$DEST"
-          if git clone --depth 1 --branch "$REF" "https://github.com/${REPO}.git" "$DEST" 2>/dev/null; then
-            :
-          else
-            git clone --filter=blob:none --no-checkout "https://github.com/${REPO}.git" "$DEST"
-            git -C "$DEST" fetch --depth 1 origin "$REF"
-            git -C "$DEST" checkout FETCH_HEAD
-          fi
-          echo "source=git" >> "$GITHUB_OUTPUT"
-          echo "dir=$DEST" >> "$GITHUB_OUTPUT"
-          echo "Installed tested CLI from git ${REPO}@${REF}"
-        fi
-
-    - name: Install and build CLI
-      shell: bash
-      working-directory: ${{ steps.cli.outputs.dir }}
-      run: |
-        set -euo pipefail
-        if command -v pnpm >/dev/null 2>&1; then
-          pnpm install --frozen-lockfile || pnpm install
-          pnpm build
-        else
-          corepack prepare pnpm@11.3.0 --activate
-          pnpm install --frozen-lockfile || pnpm install
-          pnpm build
-        fi
-        test -f dist/tested.js
-        echo "TESTED_BIN=$(pwd)/dist/tested.js" >> "$GITHUB_ENV"
-        echo "$(pwd)/dist" >> "$GITHUB_PATH"
+      env:
+        CLI_PATH: ${{ inputs.cli-path }}
+        CLI_REF: ${{ inputs.cli-ref }}
+        CLI_REPOSITORY: ${{ inputs.cli-repository }}
+        CLI_VERSION: ${{ inputs.version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "${{ github.action_path }}/install-cli.sh"
 
     - name: tested check
       shell: bash
@@ -140,13 +108,12 @@ runs:
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
         set -euo pipefail
-        BIN="${TESTED_BIN:-tested}"
         if [ -z "${PR_BASE_REF:-}" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
           PR_BASE_REF="$GITHUB_BASE_REF"
         fi
         BASE="$(bash "${{ github.action_path }}/resolve-check-base.sh")"
         echo "tested check --base $BASE"
-        node "$BIN" check --base "$BASE"
+        tested check --base "$BASE"
 
     - name: tested push (optional)
       if: inputs.push == 'true'
@@ -159,7 +126,6 @@ runs:
         TESTED_JUNIT: ${{ inputs.junit }}
       run: |
         set -euo pipefail
-        BIN="${TESTED_BIN:-tested}"
         if [ -z "${TESTED_TOKEN:-}" ]; then
           echo "push=true requires token input or TESTED_TOKEN" >&2
           exit 1
@@ -182,7 +148,7 @@ runs:
           fi
         fi
         if [ "$MAINLINE" = "true" ]; then
-          node "$BIN" push --mainline "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"
+          tested push --mainline "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"
           exit 0
         fi
         PR="${GITHUB_PR_NUMBER:-}"
@@ -193,4 +159,4 @@ runs:
           echo "push=true requires pr-number, a pull_request event, or mainline=true / push to default branch" >&2
           exit 1
         fi
-        node "$BIN" push --pr "$PR" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"
+        tested push --pr "$PR" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"

@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { createProgram } from '../src/cli.js';
+import { CLI_VERSION } from '../src/version.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -45,5 +47,51 @@ describe('package.json bin — npx @tested/cli', () => {
     expect(new Set(Object.values(pkg.bin)).size).toBe(1);
     expect(npxDefaultBin(pkg)).toBe('tested');
     expect(pkg.bin[npxDefaultBin(pkg)!]).toBe('./dist/tested.js');
+  });
+});
+
+describe('package honesty', () => {
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+    version: string;
+    engines: { node: string };
+    files: string[];
+  };
+  const readme = readFileSync(join(root, 'README.md'), 'utf8');
+  const actionReadme = readFileSync(join(root, 'action/README.md'), 'utf8');
+  const gettingStarted = readFileSync(join(root, 'docs/GETTING-STARTED.md'), 'utf8');
+  const actionYml = readFileSync(join(root, 'action/action.yml'), 'utf8');
+
+  it('is 0.1.2 with engines.node >=24', () => {
+    expect(pkg.version).toBe('0.1.2');
+    expect(pkg.engines.node).toBe('>=24');
+    expect(readFileSync(join(root, '.nvmrc'), 'utf8').trim()).toBe('24');
+    expect(CLI_VERSION).toBe(pkg.version);
+    expect(createProgram().version()).toBe(pkg.version);
+  });
+
+  it('ships only dist + README + LICENSE (no docs that 404 on npm)', () => {
+    expect(pkg.files).toEqual(['dist', 'README.md', 'LICENSE']);
+  });
+
+  it('points README docs at https://tested.dev/docs, not tarball-missing paths', () => {
+    expect(readme).toContain('https://tested.dev/docs');
+    expect(readme).not.toMatch(/\]\(docs\//);
+    expect(readme).not.toMatch(/\]\(action\//);
+    expect(readme).toMatch(/Node 24\+/);
+    expect(readme).not.toMatch(/Node 22\+/);
+    expect(actionReadme).toMatch(/Node 24\+/);
+    expect(actionReadme).not.toMatch(/Node 22\+/);
+    expect(gettingStarted).toMatch(/Node 24\+/);
+    expect(gettingStarted).not.toMatch(/Node 22\+/);
+    expect(readme).toContain('npx @tested/cli');
+    expect(readme).toContain('pnpm exec -- tested --version');
+  });
+
+  it('defaults the Action version input to this package version', () => {
+    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.2'/);
+    expect(actionYml).toContain('install-cli.sh');
+    expect(actionYml).toMatch(/tested check --base/);
+    expect(actionYml).not.toMatch(/node "\$BIN" check/);
+    expect(actionYml).not.toMatch(/git clone/);
   });
 });

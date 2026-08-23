@@ -8,6 +8,7 @@ import { registerCheckCommand } from './commands/check.js';
 import { registerPushCommand } from './commands/push.js';
 import { registerExplainCommand } from './commands/explain.js';
 import { registerIgnoresCommand } from './commands/ignores.js';
+import { CLI_VERSION } from './version.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -21,7 +22,7 @@ export function createProgram(): Command {
         '  tested setup → tested run → tested diff → tested check → tested push --pr <n>',
       ].join('\n'),
     )
-    .version('0.1.1');
+    .version(CLI_VERSION);
 
   // Workflow order: setup/doctor → init → run → diff → check → push → explain → ignores
   registerSetupCommand(program);

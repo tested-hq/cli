@@ -2,12 +2,11 @@
 
 Coverage your agent can use. CLI for patch + project coverage with agent-readable JSON output.
 
-**→ [Getting started (simple path)](docs/GETTING-STARTED.md)**  
-**→ [GitHub Action](action/README.md)** (`action/action.yml` composite)
+Docs: https://tested.dev/docs
 
 ## Install
 
-Node >= 20.19.
+Node 24+.
 
 ```bash
 pnpm add -D @tested/cli
@@ -15,15 +14,20 @@ pnpm add -D @tested/cli
 npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
 ```
 
-CI uses the composite Action (`tested-hq/cli/action@main`). The Action clones this repo and builds the CLI.
+```bash
+npx @tested/cli --version
+# after a local install, pnpm swallows --version unless you use exec:
+pnpm exec -- tested --version
+```
+
+CI uses the composite Action (`tested-hq/cli/action@main`). It installs `@tested/cli` from npm.
 
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
+    version: 0.1.2
     token: ${{ secrets.TESTED_TOKEN }}
 ```
-
-Pin `cli-ref` to a SHA in production. See [action/README.md](action/README.md).
 
 ## First 10 minutes
 
@@ -85,7 +89,7 @@ The hook runs `tested run && tested diff` against the upstream branch (or `HEAD~
 ```yaml
 thresholds:
   patch: 80     # % of newly-added lines that must be covered
-  project: 60   # % of the whole project that must be covered
+  project: 90   # % of the whole project that must be covered
 ```
 
 ```
@@ -93,7 +97,7 @@ $ tested check
 tested.dev — coverage gate  [PASS]
 
   Patch     87.3%  (threshold 80)  [PASS]
-  Project   64.1%  (threshold 60)  [PASS]
+  Project   92.1%  (threshold 90)  [PASS]
 
 thresholds met
 $ echo $?
@@ -103,7 +107,7 @@ $ tested check
 tested.dev — coverage gate  [FAIL]
 
   Patch     42.7%  (threshold 80)  [FAIL]
-  Project   64.1%  (threshold 60)  [PASS]
+  Project   92.1%  (threshold 90)  [PASS]
 
 → add tests for uncovered ranges: tested diff
 $ echo $?
@@ -117,7 +121,7 @@ $ tested check
 tested.dev — coverage gate  [PASS]
 
   Patch     -  no executable lines in the patch  [SKIP]
-  Project   64.1%  (threshold 60)  [PASS]
+  Project   92.1%  (threshold 90)  [PASS]
 
 No executable lines in the patch — patch gate skipped. Project threshold met.
 ```
@@ -129,6 +133,7 @@ If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice o
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
+    version: 0.1.2
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -140,7 +145,7 @@ For programmatic consumers:
 
 ```
 $ tested check --json
-{"patch":{"pct":87.3,"threshold":80,"pass":true},"project":{"pct":64.1,"threshold":60,"pass":true},"overall":"pass"}
+{"patch":{"pct":87.3,"threshold":80,"pass":true},"project":{"pct":92.1,"threshold":90,"pass":true},"overall":"pass"}
 ```
 
 `--json` suppresses the human layout; the exit code is unchanged.

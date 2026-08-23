@@ -5,3 +5,5 @@ coverage/
 *.tgz
 .env
 .env.local
+action/.bin/
+action/.cli-src/

@@ -4,6 +4,7 @@ import {
   formatDoctorHuman,
   buildDoctorJson,
   TESTED_BIN_BASENAME_RE,
+  MIN_NODE_MAJOR,
 } from '../../src/commands/doctor.js';
 import type { TestedConfig } from '../../src/schemas.js';
 
@@ -35,6 +36,12 @@ function mockGit(opts: {
   }));
 }
 
+describe('MIN_NODE_MAJOR', () => {
+  it('matches engines.node (>=24)', () => {
+    expect(MIN_NODE_MAJOR).toBe(24);
+  });
+});
+
 describe('TESTED_BIN_BASENAME_RE', () => {
   it('accepts tested and tested.js', () => {
     expect(TESTED_BIN_BASENAME_RE.test('tested')).toBe(true);
@@ -53,7 +60,7 @@ describe('runDoctor', () => {
     });
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.14.0',
+      nodeVersion: 'v24.5.0',
       env: { TESTED_TOKEN: 'secret-never-print' },
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({ isRepo: true }) as never,
@@ -71,7 +78,7 @@ describe('runDoctor', () => {
     expect(token?.detail).not.toContain('secret');
   });
 
-  it('warns on Node 20 instead of hard-failing (binary already ran)', async () => {
+  it('fails on Node 20 (engines.node is >=24)', async () => {
     const result = await runDoctor({
       cwd: '/repo',
       nodeVersion: 'v20.19.2',
@@ -80,17 +87,35 @@ describe('runDoctor', () => {
       gitFactory: mockGit({}) as never,
       loadConfigFn: async () => makeConfig(),
     });
-    expect(result.exitCode).toBe(0);
-    expect(result.ok).toBe(true);
+    expect(result.exitCode).toBe(1);
+    expect(result.ok).toBe(false);
     const node = result.checks.find((c) => c.id === 'node');
-    expect(node?.status).toBe('warn');
-    expect(node?.optional).toBe(true);
+    expect(node?.status).toBe('fail');
+    expect(node?.optional).not.toBe(true);
     expect(node?.detail).toMatch(/20\.19\.2/);
-    expect(node?.detail).toMatch(/recommended/i);
+    expect(node?.detail).toMatch(/Node >= 24 required/);
     expect(node?.detail).not.toMatch(/—/);
   });
 
-  it('warns on older Node (v18) without failing the doctor exit', async () => {
+  it('fails on Node 22 (engines.node is >=24)', async () => {
+    const result = await runDoctor({
+      cwd: '/repo',
+      nodeVersion: 'v22.14.0',
+      env: {},
+      existsSyncFn: (() => true) as typeof import('node:fs').existsSync,
+      gitFactory: mockGit({}) as never,
+      loadConfigFn: async () => makeConfig(),
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.ok).toBe(false);
+    const node = result.checks.find((c) => c.id === 'node');
+    expect(node?.status).toBe('fail');
+    expect(node?.optional).not.toBe(true);
+    expect(node?.detail).toMatch(/22\.14\.0/);
+    expect(node?.detail).toMatch(/Node >= 24 required/);
+  });
+
+  it('fails on older Node (v18)', async () => {
     const result = await runDoctor({
       cwd: '/repo',
       nodeVersion: 'v18.0.0',
@@ -99,14 +124,14 @@ describe('runDoctor', () => {
       gitFactory: mockGit({}) as never,
       loadConfigFn: async () => makeConfig(),
     });
-    expect(result.exitCode).toBe(0);
-    expect(result.checks.find((c) => c.id === 'node')?.status).toBe('warn');
+    expect(result.exitCode).toBe(1);
+    expect(result.checks.find((c) => c.id === 'node')?.status).toBe('fail');
   });
 
   it('fails when not a git repo', async () => {
     const result = await runDoctor({
       cwd: '/tmp/not-a-repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: {},
       existsSyncFn: (() => false) as typeof import('node:fs').existsSync,
       gitFactory: mockGit({ isRepo: false }) as never,
@@ -121,7 +146,7 @@ describe('runDoctor', () => {
     const exists = vi.fn((p: string) => !p.endsWith('.tested.yaml'));
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: {},
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -135,7 +160,7 @@ describe('runDoctor', () => {
     const exists = vi.fn((p: string) => p.endsWith('.tested.yaml'));
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: {},
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -150,7 +175,7 @@ describe('runDoctor', () => {
     const exists = vi.fn((p: string) => p.endsWith('.tested.yaml') || p.includes('coverage'));
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: {},
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({ throwOnOrigin: true }) as never,
@@ -166,7 +191,7 @@ describe('runDoctor', () => {
     );
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: {},
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -189,7 +214,7 @@ describe('runDoctor', () => {
     );
     const bad = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: { TESTED_API_URL: 'http://evil.example.com' },
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -200,7 +225,7 @@ describe('runDoctor', () => {
 
     const good = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: { TESTED_API_URL: 'https://app.tested.dev' },
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -215,7 +240,7 @@ describe('runDoctor', () => {
     );
     const bad = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: { TESTED_BIN: '/opt/bin/evil.sh' },
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -226,7 +251,7 @@ describe('runDoctor', () => {
 
     const good = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: { TESTED_BIN: '/opt/cli/dist/tested.js' },
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -241,7 +266,7 @@ describe('runDoctor', () => {
     );
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: { TESTED_TOKEN: 'super-secret-token-value' },
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -261,7 +286,7 @@ describe('runDoctor', () => {
     );
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: {},
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({
@@ -280,7 +305,7 @@ describe('runDoctor', () => {
     );
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: { TESTED_BIN: 'dist/tested.js' },
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -295,7 +320,7 @@ describe('runDoctor', () => {
     const exists = vi.fn((p: string) => p.endsWith('.tested.yaml'));
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: {},
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -314,7 +339,7 @@ describe('runDoctor', () => {
     );
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: {},
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({ originUrl: '' }) as never,
@@ -330,7 +355,7 @@ describe('runDoctor', () => {
     );
     const ingest = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: { TESTED_INGEST_TOKEN: 'tok' },
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -342,7 +367,7 @@ describe('runDoctor', () => {
 
     const file = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: { TESTED_TOKEN_FILE: '/tmp/token' },
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -360,7 +385,7 @@ describe('runDoctor', () => {
     );
     const result = await runDoctor({
       cwd: '/repo',
-      nodeVersion: 'v22.0.0',
+      nodeVersion: 'v24.0.0',
       env: {},
       existsSyncFn: exists as typeof import('node:fs').existsSync,
       gitFactory: mockGit({}) as never,
@@ -379,7 +404,7 @@ describe('formatDoctorHuman / buildDoctorJson', () => {
   it('includes badges and overall status', () => {
     const text = formatDoctorHuman({
       checks: [
-        { id: 'node', label: 'Node.js', status: 'pass', detail: 'v22' },
+        { id: 'node', label: 'Node.js', status: 'pass', detail: 'v24' },
         { id: 'git', label: 'Git repo', status: 'fail', detail: 'nope' },
       ],
       ok: false,
@@ -393,7 +418,7 @@ describe('formatDoctorHuman / buildDoctorJson', () => {
 
   it('serializes checks for agents', () => {
     const json = buildDoctorJson({
-      checks: [{ id: 'node', label: 'Node.js', status: 'pass', detail: 'v22' }],
+      checks: [{ id: 'node', label: 'Node.js', status: 'pass', detail: 'v24' }],
       ok: true,
       exitCode: 0,
     });
