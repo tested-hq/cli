@@ -71,7 +71,7 @@ jobs:
 ```bash
 pnpm add -D @tested/cli
 # or
-npx @tested/cli
+npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
 ```
 
 Node >= 20.19.

@@ -12,7 +12,7 @@ Node >= 20.19.
 ```bash
 pnpm add -D @tested/cli
 # or
-npx @tested/cli
+npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
 ```
 
 CI uses the composite Action (`tested-hq/cli/action@main`). The Action clones this repo and builds the CLI.

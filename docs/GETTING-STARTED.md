@@ -17,7 +17,7 @@ Or step by step: `tested init` → `tested doctor` → run / diff / check / push
 ```bash
 pnpm add -D @tested/cli
 # or
-npx @tested/cli
+npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
 ```
 
 CLI runs on Node ≥ 20.19 (doctor warns below 22). GitHub Action defaults to Node **24**.
