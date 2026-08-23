@@ -3,9 +3,9 @@ import {
   runSetup,
   buildCiSnippet,
   buildTokenInstructions,
-  buildGitInstallInstructions,
+  buildInstallInstructions,
   formatSetupHuman,
-  PINNED_CLI_GIT,
+  PINNED_CLI,
 } from '../../src/commands/setup.js';
 import type { InitResult } from '../../src/commands/init.js';
 import type { DoctorResult } from '../../src/commands/doctor.js';
@@ -33,7 +33,7 @@ function okDoctor(): DoctorResult {
   };
 }
 
-describe('buildCiSnippet / token / git install', () => {
+describe('buildCiSnippet / token / install', () => {
   it('includes composite action and secrets placeholder', () => {
     const snip = buildCiSnippet();
     expect(snip).toContain('tested-hq/cli/action@main');
@@ -52,13 +52,13 @@ describe('buildCiSnippet / token / git install', () => {
     expect(text).not.toMatch(/sk_live|ghp_/);
   });
 
-  it('pins git HTTPS install instructions', () => {
-    const text = buildGitInstallInstructions();
-    expect(text).toContain(PINNED_CLI_GIT);
-    expect(text).toContain('git+https://github.com/tested-hq/cli.git');
-    expect(text).toMatch(/prepare builds/);
-    expect(text).toMatch(/github: uses SSH|github:.*SSH/i);
-    expect(text.toLowerCase()).not.toMatch(/npm publish/);
+  it('prints npm install instructions', () => {
+    const text = buildInstallInstructions();
+    expect(text).toContain(PINNED_CLI);
+    expect(text).toContain('pnpm add -D @tested/cli');
+    expect(text).toContain('npx @tested/cli');
+    expect(text).toContain('tested-hq/cli/action@main');
+    expect(text.toLowerCase()).not.toMatch(/not on npm|git\+https/);
   });
 });
 
@@ -78,7 +78,7 @@ describe('runSetup', () => {
     expect(result.stdout).toContain('setup');
     expect(result.stdout).toContain('CI snippet');
     expect(result.stdout).toContain('TESTED_TOKEN');
-    expect(result.stdout).toContain(PINNED_CLI_GIT);
+    expect(result.stdout).toContain(PINNED_CLI);
   });
 
   it('skips init when config already exists', async () => {
@@ -136,7 +136,8 @@ describe('runSetup', () => {
     const parsed = JSON.parse(result.stdout);
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.initRan).toBe(true);
-    expect(parsed.pinnedCli).toBe(PINNED_CLI_GIT);
+    expect(parsed.pinnedCli).toBe(PINNED_CLI);
+    expect(parsed.install).toContain('pnpm add -D @tested/cli');
     expect(parsed.ciSnippet).toContain('tested-hq/cli/action');
     expect(parsed.tokenInstructions).toContain('TESTED_TOKEN');
   });

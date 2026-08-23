@@ -21,8 +21,8 @@ import {
   INGEST_TOKEN_SETTINGS_URL_SHAPE,
 } from '../token-help.js';
 
-/** Pinned git install for consumers (not published to npm). HTTPS, not SSH. */
-export const PINNED_CLI_GIT = 'git+https://github.com/tested-hq/cli.git#main';
+/** npm package name for local / agent installs. */
+export const PINNED_CLI = '@tested/cli';
 
 /** CI snippet printed by `tested setup`. */
 export function buildCiSnippet(): string {
@@ -56,16 +56,13 @@ export function buildTokenInstructions(): string {
   ].join('\n');
 }
 
-export function buildGitInstallInstructions(): string {
+export function buildInstallInstructions(): string {
   return [
-    'Install CLI from git (not on npm). Use HTTPS; github: uses SSH:',
-    `  pnpm add -D ${PINNED_CLI_GIT}`,
-    '  # pin a commit SHA:',
-    '  # pnpm add -D git+https://github.com/tested-hq/cli.git#<commit-sha>',
-    '  prepare builds dist/tested.js (no cd node_modules build step).',
+    'Install CLI:',
+    `  pnpm add -D ${PINNED_CLI}`,
+    `  # or: npx ${PINNED_CLI}`,
     '',
-    '  If git rewrites HTTPS to SSH (url.*.insteadOf), hosts without ssh fail.',
-    '  Check: git config --show-origin --get-regexp "url\\..*insteadOf"',
+    '  CI: uses: tested-hq/cli/action@main  (secrets.TESTED_TOKEN)',
     '',
     '  # monorepo / local path:',
     '  pnpm install && pnpm build   # from a clone of tested-hq/cli',
@@ -124,8 +121,8 @@ export function formatSetupHuman(opts: {
   }
   lines.push('');
 
-  lines.push(heading('Install (git, pinned)'));
-  for (const line of buildGitInstallInstructions().split('\n')) {
+  lines.push(heading('Install'));
+  for (const line of buildInstallInstructions().split('\n')) {
     lines.push(dim(`  ${line}`));
   }
   lines.push('');
@@ -189,8 +186,8 @@ export async function runSetup(deps: SetupDeps): Promise<SetupResult> {
       },
       ciSnippet: buildCiSnippet(),
       tokenInstructions: buildTokenInstructions(),
-      gitInstall: buildGitInstallInstructions(),
-      pinnedCli: PINNED_CLI_GIT,
+      install: buildInstallInstructions(),
+      pinnedCli: PINNED_CLI,
     };
     return {
       initRan,

@@ -12,36 +12,24 @@ tested push --pr <n>  # share on app.tested.dev
 
 Or step by step: `tested init` → `tested doctor` → run / diff / check / push.
 
-## 1. Install (git, HTTPS; not on npm)
-
-`@tested/cli` is **private** and is **not** published to the npm registry
-(`@tested/cli` 404s there). Install over HTTPS so hosts without `ssh` work:
+## 1. Install
 
 ```bash
-# pin a branch (HTTPS). Do not use github:tested-hq/cli; that uses git+ssh.
-pnpm add -D git+https://github.com/tested-hq/cli.git#main
-
-# pin a commit SHA (recommended for apps / CI)
-pnpm add -D git+https://github.com/tested-hq/cli.git#<full-commit-sha>
+pnpm add -D @tested/cli
+# or
+npx @tested/cli
 ```
 
-`prepare` / `prepublishOnly` build `dist/tested.js`. No
-`cd node_modules/@tested/cli && pnpm install && pnpm build` step.
+CLI runs on Node ≥ 20.19 (doctor warns below 22). GitHub Action defaults to Node **24**.
 
-If `git+https://...` is rewritten to SSH, a `url.*.insteadOf` rule is the cause:
-
-```bash
-git config --show-origin --get-regexp 'url\..*insteadOf'
-```
-
-From this monorepo / package checkout:
+From this repo checkout:
 
 ```bash
 pnpm install && pnpm build
 # binary: dist/tested.js  (or: pnpm link --global)
 ```
 
-CLI runs on Node ≥ 20.19 (doctor warns below 22). GitHub Action defaults to Node **24**.
+CI uses the [GitHub Action](../action/README.md) (`tested-hq/cli/action@main`).
 
 ## 2. Setup (recommended first command)
 
@@ -226,4 +214,4 @@ paths outside the repository root.
 - **Minimal chrome** — status color only; `NO_COLOR` respected  
 - **Errors teach** — next command, not a stack dump  
 - **Agents first** — stable JSON; exit codes mean gate  
-- **Git-pinned installs** — no npm publish; pin commit SHAs in CI  
+- **Action for CI** — `tested-hq/cli/action@main`; pin `cli-ref` to a SHA in production  

@@ -5,24 +5,25 @@ Coverage your agent can use. CLI for patch + project coverage with agent-readabl
 **→ [Getting started (simple path)](docs/GETTING-STARTED.md)**  
 **→ [GitHub Action](action/README.md)** (`action/action.yml` composite)
 
-## Install (git, HTTPS; not on npm)
+## Install
 
-`@tested/cli` is private. It is not on the public npm registry.
-
-```bash
-# HTTPS. The github: shorthand uses git+ssh and fails on hosts without ssh.
-pnpm add -D git+https://github.com/tested-hq/cli.git#main
-# pin a commit in production:
-# pnpm add -D git+https://github.com/tested-hq/cli.git#<full-sha>
-```
-
-`prepare` builds `dist/tested.js`. No `cd node_modules/@tested/cli && pnpm build` step.
-
-If git rewrites HTTPS to SSH (`url.*.insteadOf`), check:
+Node >= 20.19.
 
 ```bash
-git config --show-origin --get-regexp 'url\..*insteadOf'
+pnpm add -D @tested/cli
+# or
+npx @tested/cli
 ```
+
+CI uses the composite Action (`tested-hq/cli/action@main`). The Action clones this repo and builds the CLI.
+
+```yaml
+- uses: tested-hq/cli/action@main
+  with:
+    token: ${{ secrets.TESTED_TOKEN }}
+```
+
+Pin `cli-ref` to a SHA in production. See [action/README.md](action/README.md).
 
 ## First 10 minutes
 
@@ -114,8 +115,11 @@ If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice o
 ### GitHub Actions
 
 ```yaml
-- run: pnpm test -- --coverage
-- run: pnpm exec tested check
+- uses: tested-hq/cli/action@main
+  with:
+    push: true
+    pr-number: ${{ github.event.pull_request.number }}
+    token: ${{ secrets.TESTED_TOKEN }}
 ```
 
 ### `--json`
