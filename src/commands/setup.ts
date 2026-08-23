@@ -35,8 +35,6 @@ export function buildCiSnippet(): string {
     '    runs-on: ubuntu-latest',
     '    steps:',
     '      - uses: actions/checkout@v4',
-    '        with:',
-    '          fetch-depth: 0',
     '      - uses: tested-hq/cli/action@main',
     '        with:',
     '          # pin ref for reproducible installs (do not use floating tags in prod)',

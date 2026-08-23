@@ -28,7 +28,10 @@ inputs:
     required: false
     default: '.'
   base:
-    description: 'Git base ref for tested check (optional). Prefer PR base SHA for Δ vs base.'
+    description: >
+      Git base for tested check. Empty (default) uses the PR base SHA on
+      pull_request, or the previous commit on push. Fetched if missing —
+      consumers do not need fetch-depth: 0.
     required: false
     default: ''
   push:
@@ -128,14 +131,22 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         TESTED_SAFE_RUN: '1'
+        INPUT_BASE: ${{ inputs.base }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        GITHUB_BASE_REF: ${{ github.base_ref }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
         set -euo pipefail
         BIN="${TESTED_BIN:-tested}"
-        if [ -n "${{ inputs.base }}" ]; then
-          node "$BIN" check --base "${{ inputs.base }}"
-        else
-          node "$BIN" check
+        if [ -z "${PR_BASE_REF:-}" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
+          PR_BASE_REF="$GITHUB_BASE_REF"
         fi
+        BASE="$(bash "${{ github.action_path }}/resolve-check-base.sh")"
+        echo "tested check --base $BASE"
+        node "$BIN" check --base "$BASE"
 
     - name: tested push (optional)
       if: inputs.push == 'true'

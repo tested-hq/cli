@@ -20,7 +20,15 @@ export async function headSha(ctx: GitContext): Promise<string> {
 }
 
 export async function unifiedDiff(ctx: GitContext, base: string): Promise<string> {
-  return ctx.git.diff([`${base}...HEAD`]);
+  try {
+    const mergeBase = (await ctx.git.raw(['merge-base', base, 'HEAD'])).trim();
+    if (mergeBase) {
+      return ctx.git.diff([`${base}...HEAD`]);
+    }
+  } catch {
+    // Shallow clone: base SHA fetched without shared history (no merge-base).
+  }
+  return ctx.git.diff([base, 'HEAD']);
 }
 
 export async function remoteUrl(ctx: GitContext, remote = 'origin'): Promise<string> {

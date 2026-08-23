@@ -134,8 +134,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - run: pnpm install --frozen-lockfile
       - run: pnpm test -- --coverage
       - uses: tested-hq/cli/action@main
@@ -151,7 +149,7 @@ What the action does:
 1. `actions/setup-node` **24**
 2. Install CLI from **git** (`cli-ref`) or **local path** (`cli-path`)
 3. `pnpm install && pnpm build` → `dist/tested.js`
-4. `tested check` (optional `--base`)
+4. `tested check` (Action defaults `--base` to the PR base SHA / previous push commit)
 5. Optional `tested push` when `push: true`
 
 Manual minimal gate (if CLI already on PATH):
