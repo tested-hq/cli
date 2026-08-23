@@ -23,7 +23,7 @@ jobs:
 
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.4
+          version: 0.1.5
 ```
 
 ## Gate + share URL
@@ -31,7 +31,7 @@ jobs:
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.4
+    version: 0.1.5
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -41,7 +41,7 @@ jobs:
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `version` | `0.1.4` | npm version of `@tested/cli` |
+| `version` | `0.1.5` | npm version of `@tested/cli` |
 | `cli-path` | _(empty)_ | Local checkout of `tested-hq/cli` (skips npm) |
 | `cli-repository` | `tested-hq/cli` | GitHub `owner/name` for the git fallback |
 | `cli-ref` | _(empty)_ | Optional git ref instead of npm |
@@ -83,6 +83,14 @@ Node 24+.
 
 ## Security
 
-- Prefer `token: ${{ secrets.TESTED_TOKEN }}` over putting secrets on argv.
+- Prefer `token: ${{ secrets.TESTED_TOKEN }}` on this step only. Do not export
+  `TESTED_TOKEN` at workflow/job level before untrusted steps (`pnpm test`):
+  that code can read the secret or write `GITHUB_ENV`.
+- `api-url`, `version`, `cli-path`, `cli-ref`, and `cli-repository` are trusted
+  install/destination inputs. Do not pass PR titles, branch names, or other
+  untrusted values into them.
+- The action ignores ambient `TESTED_API_URL` / `TESTED_ALLOW_CUSTOM_API_URL`
+  (a previous step writing `GITHUB_ENV` cannot redirect the Bearer token).
+- Push uses `github.repository` for `--owner` / `--name`, not `git remote origin`.
 - The action sets `TESTED_SAFE_RUN=1` for the check step context.
 - Never log the token value.

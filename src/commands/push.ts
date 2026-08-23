@@ -18,9 +18,41 @@ import { dim, errorBlock, progress, shareUrl, successLine } from '../output/ui.j
 import { tokenMintGuidance } from '../token-help.js';
 
 export const DEFAULT_API_BASE = 'https://app.tested.dev';
+export const DEFAULT_API_HOST = 'app.tested.dev';
 
 /** Hosts allowed to use plain http:// for local development only. */
 const LOCAL_HTTP_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+/** GitHub `owner/name` as set in GITHUB_REPOSITORY. */
+export const SAFE_GITHUB_REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
+/**
+ * True when hostname is a tested.dev ingest host (not a lookalike suffix).
+ * `evil.tested.dev.example` must not match.
+ */
+export function isAllowedApiHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === 'tested.dev' || host === DEFAULT_API_HOST || host.endsWith('.tested.dev');
+}
+
+export function isLocalDevHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return LOCAL_HTTP_HOSTS.has(host) || host.endsWith('.localhost');
+}
+
+/**
+ * Parse `owner/name` from GITHUB_REPOSITORY-style input.
+ * Rejects credentials, extra path segments, and shell-metacharacter names.
+ */
+export function parseGitHubRepository(
+  repo: string | undefined | null,
+): { owner: string; name: string } | null {
+  const raw = repo?.trim();
+  if (!raw || !SAFE_GITHUB_REPOSITORY_RE.test(raw)) return null;
+  const [owner, name] = raw.split('/');
+  if (!owner || !name) return null;
+  return { owner, name };
+}
 
 export interface PushCliOpts {
   token?: string;
@@ -188,14 +220,26 @@ export function resolveToken(opts: {
   return null;
 }
 
+export interface AssertSafeApiBaseOpts {
+  /**
+   * When true, any https:// host is allowed (self-hosted ingest).
+   * Off by default: the Bearer token must not be sent to an arbitrary host.
+   */
+  allowCustom?: boolean;
+}
+
 /**
  * Validate and normalize an ingest API base URL.
  *
  * Security: `--url` / TESTED_API_URL control where the ingest Bearer token is
  * sent. Reject non-https bases (except http://localhost for local dev), reject
- * embedded credentials, and require a parseable absolute URL.
+ * embedded credentials, require a parseable absolute URL, and allowlist
+ * `*.tested.dev` unless TESTED_ALLOW_CUSTOM_API_URL is set.
  */
-export function assertSafeApiBase(raw: string): string {
+export function assertSafeApiBase(
+  raw: string,
+  opts: AssertSafeApiBaseOpts = {},
+): string {
   const trimmed = raw.trim();
   if (!trimmed) {
     throw new Error('API URL must not be empty');
@@ -212,11 +256,15 @@ export function assertSafeApiBase(raw: string): string {
     throw new Error('API URL must not embed credentials');
   }
   const host = u.hostname.toLowerCase();
-  const isLocalHttpHost =
-    LOCAL_HTTP_HOSTS.has(host) || host.endsWith('.localhost');
+  const local = isLocalDevHost(host);
   if (u.protocol === 'https:') {
-    // allowed
-  } else if (u.protocol === 'http:' && isLocalHttpHost) {
+    if (!local && !isAllowedApiHost(host) && !opts.allowCustom) {
+      throw new Error(
+        `API URL host "${u.hostname}" is not allowed. Ingest tokens are sent to this host. ` +
+          `Use https://app.tested.dev, or set TESTED_ALLOW_CUSTOM_API_URL=1 for a private endpoint.`,
+      );
+    }
+  } else if (u.protocol === 'http:' && local) {
     // local dev only
   } else {
     throw new Error(
@@ -228,6 +276,11 @@ export function assertSafeApiBase(raw: string): string {
   return `${u.origin}${pathPart}`;
 }
 
+function allowCustomApiUrl(env: NodeJS.ProcessEnv): boolean {
+  const raw = env.TESTED_ALLOW_CUSTOM_API_URL;
+  return raw === '1' || raw === 'true';
+}
+
 /** Resolve API base URL; strip trailing slash; enforce safe scheme/host. */
 export function resolveApiBase(opts: {
   flag?: string;
@@ -237,7 +290,7 @@ export function resolveApiBase(opts: {
   const flag = opts.flag?.trim();
   const fromEnv = env.TESTED_API_URL?.trim();
   const raw = flag || fromEnv || DEFAULT_API_BASE;
-  return assertSafeApiBase(raw);
+  return assertSafeApiBase(raw, { allowCustom: allowCustomApiUrl(env) });
 }
 
 /**
@@ -737,6 +790,13 @@ export async function executePush(
 
   let owner = cli.owner;
   let name = cli.name;
+  if (!owner || !name) {
+    const fromActions = parseGitHubRepository(env.GITHUB_REPOSITORY);
+    if (fromActions) {
+      owner = owner ?? fromActions.owner;
+      name = name ?? fromActions.name;
+    }
+  }
   if (!owner || !name) {
     let origin: string;
     try {

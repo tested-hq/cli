@@ -232,6 +232,20 @@ describe('runDoctor', () => {
       loadConfigFn: async () => makeConfig(),
     });
     expect(good.checks.find((c) => c.id === 'api_url')?.status).toBe('pass');
+
+    const httpsExfil = await runDoctor({
+      cwd: '/repo',
+      nodeVersion: 'v24.0.0',
+      env: { TESTED_API_URL: 'https://evil.example.com' },
+      existsSyncFn: exists as typeof import('node:fs').existsSync,
+      gitFactory: mockGit({}) as never,
+      loadConfigFn: async () => makeConfig(),
+    });
+    expect(httpsExfil.exitCode).toBe(1);
+    expect(httpsExfil.checks.find((c) => c.id === 'api_url')?.status).toBe('fail');
+    expect(httpsExfil.checks.find((c) => c.id === 'api_url')?.detail).toMatch(
+      /not allowed/,
+    );
   });
 
   it('checks TESTED_BIN basename when set', async () => {

@@ -25,7 +25,7 @@ CI uses the composite Action (`tested-hq/cli/action@main`). It installs `@tested
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.4
+    version: 0.1.5
     token: ${{ secrets.TESTED_TOKEN }}
 ```
 
@@ -51,7 +51,7 @@ tested push --pr <n>    # needs TESTED_TOKEN
 |---------|--------|
 | Ingest token | Prefer `TESTED_TOKEN` / `TESTED_INGEST_TOKEN` / `TESTED_TOKEN_FILE` (mode `0600`). Avoid `--token` on shared hosts — it appears on process argv (`ps`). |
 | Safe run args | In CI, non-interactive shells, or when `TESTED_SAFE_RUN=1`, `tested run` rejects `--watch` / `--watchAll` and `--config` paths outside the repo root. |
-| API URL | Ingest posts only to `https://` (or `http://localhost`). Redirects with Bearer token are refused. |
+| API URL | Ingest posts only to `https://app.tested.dev` / `*.tested.dev` (or `http://localhost`). Other HTTPS hosts need `TESTED_ALLOW_CUSTOM_API_URL=1`. Redirects with Bearer token are refused. |
 | MCP hosts | For always-on agent hosts, set `TESTED_ALLOWED_CWDS` (see `@tested/mcp`) so tools cannot target arbitrary directories. |
 
 ## Agent loop
@@ -133,7 +133,7 @@ If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice o
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.4
+    version: 0.1.5
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -167,8 +167,8 @@ $ tested push
 | `TESTED_TOKEN` / `TESTED_INGEST_TOKEN` / `TESTED_TOKEN_FILE` | Ingest auth (**preferred** — not on argv) |
 | `--token` | Ingest auth (works; warns on TTY; visible in `ps`) |
 | `--pr` / `GITHUB_PR_NUMBER` / `PR_NUMBER` | PR number (required) |
-| `--url` / `TESTED_API_URL` | API base (default `https://app.tested.dev`) |
-| `--owner` / `--name` | Repo identity (default: parse `origin` remote) |
+| `--url` / `TESTED_API_URL` | API base (default `https://app.tested.dev`; other hosts need `TESTED_ALLOW_CUSTOM_API_URL=1`) |
+| `--owner` / `--name` | Repo identity (default: `GITHUB_REPOSITORY`, else `origin` remote) |
 | `--pr-title`, `--author`, `--base-ref`, `--head-ref` | PR metadata overrides |
 | `--base` | Git base for the coverage diff (same as `tested diff --base`) |
 | `--run-url` | Optional CI run URL |

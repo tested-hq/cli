@@ -5,7 +5,7 @@
 #   CLI_PATH         local checkout (wins)
 #   CLI_REF          optional git ref — fallback clone
 #   CLI_REPOSITORY   owner/name for git fallback (default tested-hq/cli)
-#   CLI_VERSION      npm version (default 0.1.4)
+#   CLI_VERSION      npm version (default 0.1.5)
 #   ACTION_PATH      github.action_path (clone dest + bin shim)
 #
 # Priority: cli-path > cli-ref (if set) > npm @tested/cli@$CLI_VERSION
@@ -15,7 +15,7 @@ set -euo pipefail
 
 PKG='@tested/cli'
 REPO_DEFAULT='tested-hq/cli'
-VERSION_DEFAULT='0.1.4'
+VERSION_DEFAULT='0.1.5'
 
 SAFE_VERSION_RE='^[A-Za-z0-9._~+^-]{1,64}$'
 SAFE_REPO_RE='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'

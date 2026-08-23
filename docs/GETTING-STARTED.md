@@ -60,7 +60,7 @@ Checks (badges `[PASS]` / `[FAIL]` / `[WARN]` / `[INFO]`):
 | Coverage file | warn | default `coverage/coverage-final.json` — run `tested run` |
 | `origin` remote | yes | needed for push owner/name |
 | Ingest token | warn | Mint at `https://app.tested.dev/repos/{owner}/{name}/settings`. Then `TESTED_TOKEN` / `TESTED_TOKEN_FILE` / `TESTED_INGEST_TOKEN` — **never printed** |
-| `TESTED_API_URL` | if set | must be `https://` (or http localhost) |
+| `TESTED_API_URL` | if set | must be `https://app.tested.dev` / `*.tested.dev` (or http localhost). Other hosts need `TESTED_ALLOW_CUSTOM_API_URL=1`. |
 | `TESTED_BIN` basename | if set | must match `/^tested(\.js)?$/` |
 
 Exit **0** when required checks pass; **1** on hard failures (or unsafe API URL / bad `TESTED_BIN`).
@@ -114,8 +114,8 @@ Useful flags:
 | Flag | Default |
 |------|---------|
 | `--token` | prefer `TESTED_TOKEN` / `TESTED_INGEST_TOKEN` / `TESTED_TOKEN_FILE` |
-| `--url` | `https://app.tested.dev` (`TESTED_API_URL`) |
-| `--owner` / `--name` | from `git remote origin` |
+| `--url` | `https://app.tested.dev` (`TESTED_API_URL`; other hosts need `TESTED_ALLOW_CUSTOM_API_URL=1`) |
+| `--owner` / `--name` | `GITHUB_REPOSITORY`, else `git remote origin` |
 | `--pr` | `GITHUB_PR_NUMBER` / `PR_NUMBER` |
 | `--json` | print `{ shareUrl, expiresAt }` on stdout |
 
@@ -138,7 +138,7 @@ jobs:
       - run: pnpm test -- --coverage
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.4
+          version: 0.1.5
           push: true
           pr-number: ${{ github.event.pull_request.number }}
           token: ${{ secrets.TESTED_TOKEN }}

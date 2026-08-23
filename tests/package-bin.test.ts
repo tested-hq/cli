@@ -60,9 +60,10 @@ describe('package honesty', () => {
   const actionReadme = readFileSync(join(root, 'action/README.md'), 'utf8');
   const gettingStarted = readFileSync(join(root, 'docs/GETTING-STARTED.md'), 'utf8');
   const actionYml = readFileSync(join(root, 'action/action.yml'), 'utf8');
+  const runPushSh = readFileSync(join(root, 'action/run-push.sh'), 'utf8');
 
-  it('is 0.1.4 with engines.node >=24', () => {
-    expect(pkg.version).toBe('0.1.4');
+  it('is 0.1.5 with engines.node >=24', () => {
+    expect(pkg.version).toBe('0.1.5');
     expect(pkg.engines.node).toBe('>=24');
     expect(readFileSync(join(root, '.nvmrc'), 'utf8').trim()).toBe('24');
     expect(CLI_VERSION).toBe(pkg.version);
@@ -88,10 +89,12 @@ describe('package honesty', () => {
   });
 
   it('defaults the Action version input to this package version', () => {
-    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.4'/);
+    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.5'/);
     expect(actionYml).toContain('install-cli.sh');
+    expect(actionYml).toContain('run-push.sh');
     expect(actionYml).toMatch(/tested check --base/);
-    expect(actionYml).toMatch(/tested push --pr "\$PR" --base "\$BASE"/);
+    expect(runPushSh).toMatch(/tested push --pr "\$PR" --base "\$BASE"/);
+    expect(runPushSh).toMatch(/tested push --mainline --base "\$BASE"/);
     expect(actionYml).not.toMatch(/node "\$BIN" check/);
     expect(actionYml).not.toMatch(/git clone/);
   });
