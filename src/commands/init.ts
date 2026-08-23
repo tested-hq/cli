@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { simpleGit } from 'simple-git';
 import {
   dim,
@@ -260,6 +260,7 @@ export function registerInitCommand(program: Command): void {
     .description('Initialize tested.dev in the current project (writes .tested.yaml)')
     .option('--force', 'Overwrite an existing .tested.yaml', false)
     .option('--hooks', 'Install husky pre-push hook (skipped by default in CI / non-TTY)', false)
+    .addOption(new Option('--no-hooks').hideHelp())
     .option('--json', 'Emit JSON instead of human text', false)
     .action(async (opts: { force: boolean; hooks: boolean; json: boolean }) => {
       try {

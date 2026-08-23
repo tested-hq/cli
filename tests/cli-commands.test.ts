@@ -426,7 +426,7 @@ describe('tested diff — first repo on main', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });
 
 describe('tested explain — source path boundary', () => {

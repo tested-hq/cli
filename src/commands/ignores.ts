@@ -12,18 +12,15 @@ async function printIgnores(asJson: boolean): Promise<void> {
 }
 
 export function registerIgnoresCommand(program: Command): void {
-  const cmd = program
+  program
     .command('ignores')
     .description('List ignore patterns (defaults + user). `list` is optional.')
+    .argument('[subcommand]', 'optional "list" (the default)')
     .option('--json', 'Emit JSON', false)
-    .action(async (opts: { json: boolean }) => {
-      await printIgnores(opts.json);
-    });
-  cmd
-    .command('list')
-    .description('Print all ignore patterns (defaults + user)')
-    .option('--json', 'Emit JSON', false)
-    .action(async (opts: { json: boolean }) => {
+    .action(async (subcommand: string | undefined, opts: { json: boolean }) => {
+      if (subcommand !== undefined && subcommand !== 'list') {
+        throw new Error(`unknown ignores subcommand "${subcommand}". Try: tested ignores list`);
+      }
       await printIgnores(opts.json);
     });
 }

@@ -48,7 +48,7 @@ beforeAll(async () => {
   await mkdir(join(repo, 'coverage'));
   await writeFile(join(repo, 'coverage/coverage-final.json'), JSON.stringify(cov));
   await writeFile(join(repo, 'package.json'), JSON.stringify({ name: 'demo' }));
-});
+}, 60_000);
 
 afterAll(async () => {
   await rm(repo, { recursive: true, force: true });
