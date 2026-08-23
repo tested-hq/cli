@@ -108,6 +108,14 @@ describe('package honesty', () => {
     expect(ciYml).toContain('token: ${{ secrets.TESTED_TOKEN }}');
     expect(ciYml).not.toMatch(/token:\s*['"]?(tested_|sk_)/i);
     expect(ciYml).not.toMatch(/TESTED_TOKEN:\s*['"][^$\s]/);
+    expect(ciYml).toMatch(/name: tested check \+ hobby push/);
+    expect(ciYml).toMatch(/needs:\s*test/);
+    expect(ciYml).toContain('coverage-final.json');
+    const testJob = ciYml.slice(
+      ciYml.indexOf('name: typecheck + test + build'),
+      ciYml.indexOf('name: tested check + hobby push'),
+    );
+    expect(testJob).not.toContain('uses: ./action');
     expect(actionYml).toMatch(
       /name: tested push \(optional\)\s*\n\s+if: inputs\.push == 'true'\s*\n\s+continue-on-error: true/,
     );
