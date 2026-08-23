@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
   detectTestRunner,
+  detectDefaultBranch,
+  detectProject,
   buildInitYaml,
   formatInitResultHuman,
   buildInitJsonOutput,
@@ -226,6 +228,68 @@ describe('runInit', () => {
     const result = await runInit({ cwd: dir, force: false, hooks: false });
     expect(result.hookInstalled).toBe(false);
     expect(existsSync(join(dir, '.husky/pre-push'))).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('detectDefaultBranch / detectProject', () => {
+  it('returns main when cwd is not a git repo', async () => {
+    const dir = mkTmp();
+    expect(await detectDefaultBranch(dir)).toBe('main');
+    const detected = await detectProject(dir);
+    expect(detected.hasPackageJson).toBe(false);
+    expect(detected.defaultBranch).toBe('main');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('returns main when the repo has no origin/HEAD', async () => {
+    const dir = mkTmp();
+    const { simpleGit } = await import('simple-git');
+    const git = simpleGit({ baseDir: dir });
+    await git.init(['-b', 'develop']);
+    await git.addConfig('user.email', 'test@tested.dev');
+    await git.addConfig('user.name', 'Test');
+    writeFileSync(join(dir, 'readme'), 'x\n');
+    await git.add('.');
+    await git.commit('init', { '--no-verify': null });
+    expect(await detectDefaultBranch(dir)).toBe('main');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('reads a local symbolic-ref origin/HEAD', async () => {
+    const dir = mkTmp();
+    const { simpleGit } = await import('simple-git');
+    const git = simpleGit({ baseDir: dir });
+    await git.init(['-b', 'main']);
+    await git.addConfig('user.email', 'test@tested.dev');
+    await git.addConfig('user.name', 'Test');
+    writeFileSync(join(dir, 'readme'), 'x\n');
+    await git.add('.');
+    await git.commit('init', { '--no-verify': null });
+    await git.raw([
+      'symbolic-ref',
+      'refs/remotes/origin/HEAD',
+      'refs/remotes/origin/develop',
+    ]);
+    expect(await detectDefaultBranch(dir)).toBe('develop');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('detects jest from jest.config.json and other jest config names', () => {
+    const dir = mkTmp();
+    writeFileSync(join(dir, 'jest.config.json'), '{}');
+    expect(detectTestRunner(dir)).toBe('jest');
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('runInit — invalid package.json husky probe', () => {
+  it('skips hooks with a warning when package.json is not JSON', async () => {
+    const dir = mkTmp();
+    writeFileSync(join(dir, 'package.json'), '{not-json');
+    const result = await runInit({ cwd: dir, force: false, hooks: true });
+    expect(result.hookInstalled).toBe(false);
+    expect(result.warnings.some((w) => /husky/.test(w))).toBe(true);
     rmSync(dir, { recursive: true, force: true });
   });
 });

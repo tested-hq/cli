@@ -74,6 +74,24 @@ describe('shouldEnforceSafeRun', () => {
     ).toBe(true);
   });
 
+  it('enforces when TESTED_SAFE_RUN=true or common CI markers', () => {
+    expect(
+      shouldEnforceSafeRun({ env: { TESTED_SAFE_RUN: 'true' }, isTTY: true }),
+    ).toBe(true);
+    expect(
+      shouldEnforceSafeRun({ env: { GITHUB_ACTIONS: 'true' }, isTTY: true }),
+    ).toBe(true);
+    expect(
+      shouldEnforceSafeRun({ env: { GITLAB_CI: 'true' }, isTTY: true }),
+    ).toBe(true);
+  });
+
+  it('still enforces in CI when TESTED_SAFE_RUN=0', () => {
+    expect(
+      shouldEnforceSafeRun({ env: { TESTED_SAFE_RUN: '0', CI: '1' }, isTTY: true }),
+    ).toBe(true);
+  });
+
   it('enforces in CI even on a TTY', () => {
     expect(shouldEnforceSafeRun({ env: { CI: 'true' }, isTTY: true })).toBe(
       true,
@@ -102,6 +120,8 @@ describe('assertSafeRunArgs', () => {
     expect(() => assertSafeRunArgs(['--watch'], root)).toThrow(/watch/);
     expect(() => assertSafeRunArgs(['--watchAll'], root)).toThrow(/watch/);
     expect(() => assertSafeRunArgs(['-w'], root)).toThrow(/watch/);
+    expect(() => assertSafeRunArgs(['--watch=true'], root)).toThrow(/watch/);
+    expect(() => assertSafeRunArgs(['--watchAll=true'], root)).toThrow(/watch/);
   });
 
   it('rejects --config paths outside the repo root', () => {
@@ -111,6 +131,10 @@ describe('assertSafeRunArgs', () => {
     expect(() =>
       assertSafeRunArgs(['--config=../outside/vitest.config.ts'], root),
     ).toThrow(/escapes/);
+    expect(() => assertSafeRunArgs(['--config', '--foo'], root)).toThrow(
+      /requires a path/,
+    );
+    expect(() => assertSafeRunArgs(['--config='], root)).toThrow(/requires a path/);
   });
 
   it('allows --config paths inside the repo', () => {

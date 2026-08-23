@@ -273,6 +273,106 @@ describe('runDoctor', () => {
     expect(origin?.detail).toContain('***@');
     expect(origin?.detail).not.toContain('ghp_secret');
   });
+
+  it('warns when TESTED_BIN is a relative path', async () => {
+    const exists = vi.fn(
+      (p: string) => p.endsWith('.tested.yaml') || p.includes('coverage-final'),
+    );
+    const result = await runDoctor({
+      cwd: '/repo',
+      nodeVersion: 'v22.0.0',
+      env: { TESTED_BIN: 'dist/tested.js' },
+      existsSyncFn: exists as typeof import('node:fs').existsSync,
+      gitFactory: mockGit({}) as never,
+      loadConfigFn: async () => makeConfig(),
+    });
+    const bin = result.checks.find((c) => c.id === 'tested_bin');
+    expect(bin?.status).toBe('warn');
+    expect(bin?.detail).toMatch(/relative path/);
+  });
+
+  it('keeps the default coverage path when loadConfig throws', async () => {
+    const exists = vi.fn((p: string) => p.endsWith('.tested.yaml'));
+    const result = await runDoctor({
+      cwd: '/repo',
+      nodeVersion: 'v22.0.0',
+      env: {},
+      existsSyncFn: exists as typeof import('node:fs').existsSync,
+      gitFactory: mockGit({}) as never,
+      loadConfigFn: async () => {
+        throw new Error('bad yaml');
+      },
+    });
+    expect(result.checks.find((c) => c.id === 'coverage')?.detail).toMatch(
+      /coverage\/coverage-final\.json/,
+    );
+  });
+
+  it('fails when origin URL is empty', async () => {
+    const exists = vi.fn(
+      (p: string) => p.endsWith('.tested.yaml') || p.includes('coverage-final'),
+    );
+    const result = await runDoctor({
+      cwd: '/repo',
+      nodeVersion: 'v22.0.0',
+      env: {},
+      existsSyncFn: exists as typeof import('node:fs').existsSync,
+      gitFactory: mockGit({ originUrl: '' }) as never,
+      loadConfigFn: async () => makeConfig(),
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.checks.find((c) => c.id === 'origin')?.detail).toMatch(/empty/);
+  });
+
+  it('names TESTED_INGEST_TOKEN and TESTED_TOKEN_FILE as the token source', async () => {
+    const exists = vi.fn(
+      (p: string) => p.endsWith('.tested.yaml') || p.includes('coverage-final'),
+    );
+    const ingest = await runDoctor({
+      cwd: '/repo',
+      nodeVersion: 'v22.0.0',
+      env: { TESTED_INGEST_TOKEN: 'tok' },
+      existsSyncFn: exists as typeof import('node:fs').existsSync,
+      gitFactory: mockGit({}) as never,
+      loadConfigFn: async () => makeConfig(),
+    });
+    expect(ingest.checks.find((c) => c.id === 'token')?.detail).toMatch(
+      /TESTED_INGEST_TOKEN/,
+    );
+
+    const file = await runDoctor({
+      cwd: '/repo',
+      nodeVersion: 'v22.0.0',
+      env: { TESTED_TOKEN_FILE: '/tmp/token' },
+      existsSyncFn: exists as typeof import('node:fs').existsSync,
+      gitFactory: mockGit({}) as never,
+      loadConfigFn: async () => makeConfig(),
+      resolveTokenFn: () => 'from-file',
+    });
+    expect(file.checks.find((c) => c.id === 'token')?.detail).toMatch(
+      /TESTED_TOKEN_FILE/,
+    );
+  });
+
+  it('reports a token resolve failure without echoing secrets', async () => {
+    const exists = vi.fn(
+      (p: string) => p.endsWith('.tested.yaml') || p.includes('coverage-final'),
+    );
+    const result = await runDoctor({
+      cwd: '/repo',
+      nodeVersion: 'v22.0.0',
+      env: {},
+      existsSyncFn: exists as typeof import('node:fs').existsSync,
+      gitFactory: mockGit({}) as never,
+      loadConfigFn: async () => makeConfig(),
+      resolveTokenFn: () => {
+        throw new Error('token file "supersecretvalue" is world-readable');
+      },
+    });
+    const token = result.checks.find((c) => c.id === 'token');
+    expect(token?.status).toBe('fail');
+    expect(token?.detail).not.toContain('supersecretvalue');
+  });
 });
 
 describe('formatDoctorHuman / buildDoctorJson', () => {

@@ -7,6 +7,12 @@ import {
   tip,
   colorPct,
   formatCliError,
+  isColorEnabled,
+  progress,
+  shareUrl,
+  heading,
+  dim,
+  successLine,
 } from '../../src/output/ui.js';
 
 describe('ui helpers', () => {
@@ -60,5 +66,33 @@ describe('ui helpers', () => {
     expect(block).toContain('Expected: /tmp/x/coverage/coverage-final.json');
     expect(block).toContain('tested run');
     expect(block).toContain('tested diff');
+  });
+
+  it('formatCliError expands missing ingest token and invalid PR number', () => {
+    const token = formatCliError('missing ingest token');
+    expect(token).toContain('error: missing ingest token');
+    expect(token).toContain('TESTED_TOKEN');
+
+    const pr = formatCliError('invalid PR number — got "nope"');
+    expect(pr).toContain('error: invalid PR number');
+    expect(pr).toContain('GITHUB_PR_NUMBER');
+  });
+
+  it('formatCliError passes through multi-line blocks and wraps plain messages', () => {
+    const passthrough = formatCliError('error: already formatted\n');
+    expect(passthrough).toBe('error: already formatted\n');
+    const fallback = formatCliError('something unexpected');
+    expect(fallback).toMatch(/^error: something unexpected\n$/);
+  });
+
+  it('exports the small presentational helpers', () => {
+    expect(typeof isColorEnabled()).toBe('boolean');
+    expect(progress('computing diff…')).toContain('computing diff…');
+    expect(shareUrl('https://app.tested.dev/s/x')).toContain('https://app.tested.dev/s/x');
+    expect(heading('tested.dev — report')).toContain('tested.dev — report');
+    expect(dim('quiet')).toContain('quiet');
+    expect(successLine('wrote config')).toContain('wrote config');
+    expect(nextSteps([])).toBe('');
+    expect(errorBlock('only title')).toContain('error: only title');
   });
 });

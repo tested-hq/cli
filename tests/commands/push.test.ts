@@ -796,4 +796,150 @@ describe('executePush', () => {
     expect(result.exitCode).toBe(0);
     expect(posted?.pr?.number).toBe(55);
   });
+
+  it('attaches a JUnit test report when --junit is set', async () => {
+    const xml = `<?xml version="1.0"?><testsuite><testcase name="ok" time="0.1"/></testsuite>`;
+    const computeDiffFn = vi.fn(async () => makeDiff());
+    let posted: IngestBody | undefined;
+    const fetchFn: typeof fetch = async (_url, init) => {
+      posted = JSON.parse(String(init?.body)) as IngestBody;
+      return new Response(JSON.stringify({ shareUrl: 'https://app.tested.dev/s/j' }), {
+        status: 200,
+      });
+    };
+    const ctx: GitContext = {
+      git: {
+        raw: async (args: string[]) => {
+          if (args[0] === 'remote') return 'git@github.com:o/n.git\n';
+          if (args[0] === 'config') return 'u\n';
+          return '\n';
+        },
+        revparse: async (args: string[]) =>
+          args[0] === 'HEAD' ? 'h\n' : 'b\n',
+      } as unknown as GitContext['git'],
+      repoRoot: '/repo',
+    };
+    const result = await executePush(
+      { json: false, token: 't', pr: '1', junit: '/tmp/does-not-exist.xml' },
+      {
+        cwd: '/repo',
+        env: {},
+        computeDiffFn: computeDiffFn as unknown as typeof import('../../src/core/computeDiff.js').computeDiff,
+        fetchFn,
+        openRepoFn: async () => ctx,
+        loadConfigFn: async () => makeConfig(),
+        onProgress: () => {},
+      },
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/JUnit file not found/);
+
+    const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'tested-junit-'));
+    const junitPath = join(dir, 'junit.xml');
+    writeFileSync(junitPath, xml);
+    try {
+      const ok = await executePush(
+        { json: false, token: 't', pr: '1', owner: 'o', name: 'n', junit: junitPath },
+        {
+          cwd: dir,
+          env: {},
+          computeDiffFn: computeDiffFn as unknown as typeof import('../../src/core/computeDiff.js').computeDiff,
+          fetchFn,
+          openRepoFn: async () => ctx,
+          loadConfigFn: async () => makeConfig(),
+          onProgress: () => {},
+        },
+      );
+      expect(ok.exitCode).toBe(0);
+      expect(posted?.testReport?.totals.tests).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to "coverage push" on detached HEAD and default onProgress', async () => {
+    const computeDiffFn = vi.fn(async () => makeDiff());
+    let posted: IngestBody | undefined;
+    const fetchFn: typeof fetch = async (_url, init) => {
+      posted = JSON.parse(String(init?.body)) as IngestBody;
+      return new Response(JSON.stringify({ shareUrl: 'https://app.tested.dev/s/d' }), {
+        status: 200,
+      });
+    };
+    const ctx: GitContext = {
+      git: {
+        raw: async (args: string[]) => {
+          if (args[0] === 'remote') return 'git@github.com:o/n.git\n';
+          if (args[0] === 'config') throw new Error('no user.name');
+          return '\n';
+        },
+        revparse: async (args: string[]) =>
+          args[0] === 'HEAD' ? 'h\n' : 'HEAD\n',
+      } as unknown as GitContext['git'],
+      repoRoot: '/repo',
+    };
+    const result = await executePush(
+      { json: false, token: 't', pr: '2', owner: 'o', name: 'n' },
+      {
+        cwd: '/repo',
+        env: { USER: 'ci-user' },
+        computeDiffFn: computeDiffFn as unknown as typeof import('../../src/core/computeDiff.js').computeDiff,
+        fetchFn,
+        openRepoFn: async () => ctx,
+        loadConfigFn: async () => makeConfig(),
+      },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(posted?.pr?.headRef).toBe('coverage push');
+    expect(posted?.pr?.authorLogin).toBe('ci-user');
+  });
+});
+
+describe('resolveJunitPath / loadTestReportFromJunit', () => {
+  it('resolves TESTED_JUNIT and default candidate paths', async () => {
+    const { resolveJunitPath, loadTestReportFromJunit } = await import(
+      '../../src/commands/push.js'
+    );
+    expect(
+      resolveJunitPath({
+        cwd: '/repo',
+        env: {},
+        existsSyncFn: (() => false) as typeof import('node:fs').existsSync,
+      }),
+    ).toBeNull();
+
+    expect(
+      resolveJunitPath({
+        cwd: '/repo',
+        env: { TESTED_JUNIT: 'reports/junit.xml' },
+        existsSyncFn: ((p: string) => p.endsWith('reports/junit.xml')) as typeof import('node:fs').existsSync,
+      }),
+    ).toBe('/repo/reports/junit.xml');
+
+    expect(
+      resolveJunitPath({
+        cwd: '/repo',
+        env: {},
+        existsSyncFn: ((p: string) => p.endsWith('junit.xml')) as typeof import('node:fs').existsSync,
+      }),
+    ).toBe('/repo/junit.xml');
+
+    expect(() =>
+      resolveJunitPath({
+        cwd: '/repo',
+        env: { TESTED_JUNIT: '/missing.xml' },
+        existsSyncFn: (() => false) as typeof import('node:fs').existsSync,
+      }),
+    ).toThrow(/TESTED_JUNIT file not found/);
+
+    const xml = `<?xml version="1.0"?><testsuite><testcase name="a" time="0.2"/></testsuite>`;
+    const report = loadTestReportFromJunit(
+      '/x.xml',
+      (() => xml) as unknown as typeof import('node:fs').readFileSync,
+    );
+    expect(report.totals.tests).toBe(1);
+  });
 });

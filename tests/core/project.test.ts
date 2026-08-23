@@ -31,4 +31,19 @@ describe('computeProjectCoverage', () => {
       pct: 50,
     });
   });
+
+  it('returns 0% when there are no executable statements', () => {
+    const empty: FileCoverage = {
+      path: 'src/empty.ts',
+      absPath: '/repo/src/empty.ts',
+      statements: [],
+    };
+    const result = computeProjectCoverage([empty]);
+    expect(result.totals).toEqual({ executable: 0, covered: 0, pct: 0 });
+    expect(result.byFile.get('src/empty.ts')).toEqual({
+      executable: 0,
+      covered: 0,
+      pct: 0,
+    });
+  });
 });

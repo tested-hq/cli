@@ -110,4 +110,35 @@ describe('formatHuman', () => {
     const text = formatHuman(sample);
     expect(text).toContain('tested push --pr');
   });
+
+  it('shows a project-only gate failure and fully-covered patch files', () => {
+    const out: DiffOutput = {
+      ...sample,
+      patch: { executable: 10, covered: 10, pct: 100 },
+      project: { executable: 100, covered: 40, pct: 40, delta: null },
+      files: [
+        {
+          path: 'src/ok.ts',
+          patchCoverage: 100,
+          projectCoverage: 100,
+          uncoveredRanges: [],
+        },
+      ],
+    };
+    const text = formatHuman(out, {
+      thresholds: { patch: 80, project: 60 },
+      tips: false,
+    });
+    expect(text).toContain('[FAIL]');
+    expect(text).toMatch(/project 40\.0% < 60%/);
+    expect(text).toContain('fully covered in patch');
+  });
+
+  it('shows a negative project delta', () => {
+    const withDelta: DiffOutput = {
+      ...sample,
+      project: { ...sample.project, delta: -2.5 },
+    };
+    expect(formatHuman(withDelta, { tips: false })).toContain('delta -2.5%');
+  });
 });
