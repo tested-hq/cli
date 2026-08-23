@@ -3,8 +3,9 @@
 Composite action: install `@tested/cli` from **git** (or a local path), run
 `tested check`, optionally `tested push`.
 
-> **Not published to npm.** Install and CI both pin a git ref of
-> [`tested-hq/cli`](https://github.com/tested-hq/cli).
+Local / agent installs use npm (`pnpm add -D @tested/cli`). CI uses this Action:
+`uses: tested-hq/cli/action@main`. The Action clones
+[`tested-hq/cli`](https://github.com/tested-hq/cli) and builds the CLI.
 
 ## Minimal (gate only)
 
@@ -68,14 +69,12 @@ jobs:
 ## Install CLI outside Actions
 
 ```bash
-# HTTPS. github:tested-hq/cli uses git+ssh and fails without ssh.
-pnpm add -D git+https://github.com/tested-hq/cli.git#main
-# pin commit (recommended)
-pnpm add -D git+https://github.com/tested-hq/cli.git#<full-sha>
-# prepare builds dist/tested.js
+pnpm add -D @tested/cli
+# or
+npx @tested/cli
 ```
 
-Do **not** `npm publish`. The package is private; git is the distribution channel.
+Node >= 20.19.
 
 ## Prerequisites in the consumer workflow
 

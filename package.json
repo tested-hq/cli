@@ -1,8 +1,19 @@
 {
   "name": "@tested/cli",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Coverage your agent can use. CLI for patch + project coverage with agent-readable JSON output.",
-  "private": true,
+  "license": "MIT",
+  "homepage": "https://tested.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tested-hq/cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tested-hq/cli/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "packageManager": "pnpm@11.3.0",
   "bin": {
@@ -11,7 +22,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsup",

@@ -21,7 +21,7 @@ export function createProgram(): Command {
         '  tested setup → tested run → tested diff → tested check → tested push --pr <n>',
       ].join('\n'),
     )
-    .version('0.0.1');
+    .version('0.1.0');
 
   // Workflow order: setup/doctor → init → run → diff → check → push → explain → ignores
   registerSetupCommand(program);

@@ -209,7 +209,7 @@ describe.sequential('public CLI commands (in-process)', () => {
       };
       expect(parsed.schemaVersion).toBe(1);
       expect(parsed.initRan).toBe(false);
-      expect(parsed.pinnedCli).toContain('git+https://github.com/tested-hq/cli.git');
+      expect(parsed.pinnedCli).toBe('@tested/cli');
     });
 
     it('refuses --hooks in a non-TTY without --force', async () => {
