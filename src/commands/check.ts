@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff } from '../core/computeDiff.js';
+import { EMPTY_PATCH_REASON, isEmptyPatch } from '../core/patch.js';
 import type { DiffOutput, TestedConfig } from '../schemas.js';
 import { badge, dim, heading, tip, formatCliError } from '../output/ui.js';
 
@@ -65,9 +66,9 @@ export function runCheck(input: CheckInput): CheckResult {
   const patchThreshold = config.thresholds.patch;
   const projectThreshold = config.thresholds.project;
 
-  // Empty patch (0 executable lines) is not a gate failure — nothing changed
-  // that can be covered. Agents and humans both hit this on main-only SHAs.
-  const patchSkipped = diff.patch.executable === 0;
+  // Empty patch (0 executable lines) is not a gate failure — nothing in
+  // scope changed that can be covered (tests-only, docs, comments, ignored).
+  const patchSkipped = isEmptyPatch(diff.patch);
   const patchPass = patchSkipped ? true : patchPct >= patchThreshold;
   const projectPass = projectPct >= projectThreshold;
   const overall: 'pass' | 'fail' = patchPass && projectPass ? 'pass' : 'fail';
@@ -79,10 +80,13 @@ export function runCheck(input: CheckInput): CheckResult {
         pct: patchPct,
         threshold: patchThreshold,
         pass: patchPass,
-        ...(patchSkipped ? { skipped: true as const } : {}),
+        ...(patchSkipped
+          ? { skipped: true as const, reason: EMPTY_PATCH_REASON }
+          : {}),
       },
       project: { pct: projectPct, threshold: projectThreshold, pass: projectPass },
       overall,
+      ...(patchSkipped ? { note: EMPTY_PATCH_REASON } : {}),
     };
     return {
       skipped: false,
@@ -103,7 +107,7 @@ export function runCheck(input: CheckInput): CheckResult {
   lines.push('');
   if (patchSkipped) {
     lines.push(
-      `  ${'Patch'.padEnd(8)}  ${dim('-')}  ${dim('(no executable lines — skipped)')}  ${badge('info')}`,
+      `  ${'Patch'.padEnd(8)}  ${dim('-')}  ${EMPTY_PATCH_REASON}  ${badge('skip')}`,
     );
   } else {
     lines.push(formatMetricLine('Patch', patchPct, patchThreshold, patchPass));
@@ -111,10 +115,19 @@ export function runCheck(input: CheckInput): CheckResult {
   lines.push(formatMetricLine('Project', projectPct, projectThreshold, projectPass));
   if (overall === 'fail') {
     lines.push('');
+    if (patchSkipped) {
+      lines.push(dim('No executable lines in the patch — patch gate skipped.'));
+    }
     lines.push(tip('add tests for uncovered ranges: tested diff'));
   } else {
     lines.push('');
-    lines.push(dim(patchSkipped ? 'project thresholds met (patch skipped)' : 'thresholds met'));
+    lines.push(
+      dim(
+        patchSkipped
+          ? 'No executable lines in the patch — patch gate skipped. Project threshold met.'
+          : 'thresholds met',
+      ),
+    );
   }
   lines.push('');
 

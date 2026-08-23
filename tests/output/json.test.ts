@@ -34,4 +34,17 @@ describe('buildDiffOutput', () => {
     expect(out.files[0]!.uncoveredRanges).toEqual([{ start: 5, end: 5, kind: 'line' }]);
     expect(() => DiffOutputSchema.parse(out)).not.toThrow();
   });
+
+  it('marks an empty patch and does not list project files as the diff', () => {
+    const out = buildDiffOutput({
+      base: 'origin/main',
+      head: 'abc123',
+      files,
+      addedByFile: new Map([['tests/auth.test.ts', new Set([1, 2, 3])]]),
+      ignored: ['tests/**'],
+    });
+    expect(out.patch).toEqual({ executable: 0, covered: 0, pct: 0, empty: true });
+    expect(out.files).toEqual([]);
+    expect(() => DiffOutputSchema.parse(out)).not.toThrow();
+  });
 });

@@ -19,8 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       # your project: install deps + produce coverage/coverage-final.json
       - run: pnpm install --frozen-lockfile
@@ -51,7 +49,7 @@ jobs:
 | `cli-repository` | `tested-hq/cli` | GitHub `owner/name` to clone |
 | `cli-ref` | `main` | Branch, tag, or **commit SHA** (prefer SHA in prod) |
 | `working-directory` | `.` | Project root with `.tested.yaml` + coverage |
-| `base` | _(empty)_ | Passed to `tested check --base` |
+| `base` | _(empty)_ | Override git base. Default: PR base SHA, or previous commit on push. Fetched if missing (no `fetch-depth: 0` required). |
 | `push` | `false` | Run `tested push` after check |
 | `pr-number` | _(empty)_ | PR number for push (else `pull_request` event) |
 | `token` | _(empty)_ | Ingest token → `TESTED_TOKEN` |
@@ -71,14 +69,15 @@ jobs:
 ```bash
 pnpm add -D @tested/cli
 # or
-npx @tested/cli
+npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
 ```
 
 Node >= 20.19.
 
 ## Prerequisites in the consumer workflow
 
-1. Checkout with enough history for your base ref (`fetch-depth: 0` is safest).
+1. Checkout the repo (`actions/checkout@v4` default shallow clone is enough —
+   the Action fetches the PR base SHA / previous push commit when missing).
 2. Produce Istanbul JSON at `coverage/coverage-final.json` (or the path in
    `.tested.yaml`) **before** this action runs — e.g. `pnpm test -- --coverage`
    or `tested run`.

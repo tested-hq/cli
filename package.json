@@ -18,7 +18,7 @@
   "packageManager": "pnpm@11.3.0",
   "bin": {
     "tested": "./dist/tested.js",
-    "td": "./dist/td.js"
+    "td": "./dist/tested.js"
   },
   "files": [
     "dist",

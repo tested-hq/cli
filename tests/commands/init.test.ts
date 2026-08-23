@@ -73,6 +73,7 @@ describe('buildInitYaml', () => {
     const yaml = buildInitYaml({ base: 'main', testRunner: null });
     expect(yaml.startsWith('# Config schema')).toBe(true);
     expect(yaml).toContain('tested.dev/docs/config');
+    expect(yaml).toMatch(/no executable lines/i);
   });
 });
 

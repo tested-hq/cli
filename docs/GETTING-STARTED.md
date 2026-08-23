@@ -17,7 +17,7 @@ Or step by step: `tested init` → `tested doctor` → run / diff / check / push
 ```bash
 pnpm add -D @tested/cli
 # or
-npx @tested/cli
+npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
 ```
 
 CLI runs on Node ≥ 20.19 (doctor warns below 22). GitHub Action defaults to Node **24**.
@@ -88,7 +88,7 @@ If you call Vitest yourself (`pnpm test:coverage`), set
 `coverage.reportOnFailure: true` or pass `--coverage.reportOnFailure` so a
 failed file still leaves `coverage/coverage-final.json`.
 
-**Empty patch** (no new executable lines): patch gate is **skipped**; project still applies.
+**Empty patch** (tests-only, comments-only, docs-only, or ignored files — no executable lines in scope): patch gate is **skipped**, not reported as 0% coverage. Project still applies. Human and `--json` both say `no executable lines in the patch`.
 
 ## 5. Push to tested.dev (share URL)
 
@@ -134,8 +134,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - run: pnpm install --frozen-lockfile
       - run: pnpm test -- --coverage
       - uses: tested-hq/cli/action@main
@@ -151,7 +149,7 @@ What the action does:
 1. `actions/setup-node` **24**
 2. Install CLI from **git** (`cli-ref`) or **local path** (`cli-path`)
 3. `pnpm install && pnpm build` → `dist/tested.js`
-4. `tested check` (optional `--base`)
+4. `tested check` (Action defaults `--base` to the PR base SHA / previous push commit)
 5. Optional `tested push` when `push: true`
 
 Manual minimal gate (if CLI already on PATH):

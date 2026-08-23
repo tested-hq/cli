@@ -212,12 +212,29 @@ describe('runCheck — empty patch (0 executable)', () => {
     expect(result.patchPass).toBe(true);
     expect(result.projectPass).toBe(false);
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toContain('no executable lines');
-    expect(result.stdout).toContain('[INFO]');
+    expect(result.stdout).toContain('no executable lines in the patch');
+    expect(result.stdout).toContain('patch gate skipped');
+    expect(result.stdout).toContain('[SKIP]');
     expect(result.stdout).toContain('[FAIL]');
+    expect(result.stdout).not.toMatch(/Patch\s+0(?:\.0)?%/);
   });
 
   it('passes overall when project meets threshold and patch is empty', () => {
+    const result = run({
+      config: makeConfig({ patch: 80, project: 60 }),
+      diff: emptyPatchDiff(64),
+      json: false,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.overall).toBe('pass');
+    expect(result.stdout).toContain('[PASS]');
+    expect(result.stdout).toContain('[SKIP]');
+    expect(result.stdout).toContain('no executable lines in the patch');
+    expect(result.stdout).toContain('patch gate skipped');
+    expect(result.stdout).not.toMatch(/Patch\s+0(?:\.0)?%/);
+  });
+
+  it('json names the skip so agents do not treat 0% as a fail', () => {
     const result = run({
       config: makeConfig({ patch: 80, project: 60 }),
       diff: emptyPatchDiff(64),
@@ -225,11 +242,16 @@ describe('runCheck — empty patch (0 executable)', () => {
     });
     expect(result.exitCode).toBe(0);
     const parsed = JSON.parse(result.stdout) as {
-      patch: { pass: boolean; skipped?: boolean };
+      patch: { pass: boolean; skipped?: boolean; reason?: string; pct: number };
       overall: string;
+      note?: string;
     };
     expect(parsed.patch.pass).toBe(true);
     expect(parsed.patch.skipped).toBe(true);
+    expect(parsed.patch.reason).toBe('no executable lines in the patch');
+    expect(parsed.note).toBe('no executable lines in the patch');
     expect(parsed.overall).toBe('pass');
+    // pct stays numeric for shape stability; skipped+reason is the signal.
+    expect(parsed.patch.pct).toBe(0);
   });
 });

@@ -94,6 +94,8 @@ export function buildInitYaml(args: BuildInitYamlArgs): string {
   if (args.testRunner) {
     lines.push(`testRunner: ${args.testRunner}`);
   }
+  lines.push('# Patch gate is skipped when the diff has no executable lines');
+  lines.push('# (tests-only, comments-only, docs-only, or ignored files).');
   lines.push('thresholds:');
   lines.push('  patch: 80');
   lines.push('  project: 60');

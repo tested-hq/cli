@@ -35,8 +35,6 @@ export function buildCiSnippet(): string {
     '    runs-on: ubuntu-latest',
     '    steps:',
     '      - uses: actions/checkout@v4',
-    '        with:',
-    '          fetch-depth: 0',
     '      - uses: tested-hq/cli/action@main',
     '        with:',
     '          # pin ref for reproducible installs (do not use floating tags in prod)',
@@ -134,6 +132,12 @@ export function formatSetupHuman(opts: {
       '3. tested check',
       '4. tested push --pr <n>   (needs TESTED_TOKEN)',
     ]),
+  );
+  lines.push('');
+  lines.push(
+    dim(
+      'Patch gate is skipped when the diff has no executable lines (tests-only, docs, comments).',
+    ),
   );
   lines.push('');
   lines.push(tip('re-check anytime: tested doctor'));

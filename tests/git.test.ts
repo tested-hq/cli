@@ -46,6 +46,41 @@ describe('git helpers', () => {
     expect(base).toBe(sha);
   });
 
+  it('uses three-dot diff when merge-base exists', async () => {
+    const calls: string[][] = [];
+    const ctx = {
+      git: {
+        raw: async () => 'aabbcc\n',
+        diff: async (args: string[]) => {
+          calls.push(args);
+          return '';
+        },
+      } as never,
+      repoRoot: repo,
+    };
+    await unifiedDiff(ctx, 'aabbcc');
+    expect(calls).toEqual([['aabbcc...HEAD']]);
+  });
+
+  it('falls back to two-dot diff when merge-base is missing', async () => {
+    const calls: string[][] = [];
+    const ctx = {
+      git: {
+        raw: async () => {
+          throw new Error('no merge base');
+        },
+        diff: async (args: string[]) => {
+          calls.push(args);
+          return 'diff --git a/x b/x\n';
+        },
+      } as never,
+      repoRoot: repo,
+    };
+    const diff = await unifiedDiff(ctx, 'deadbeef');
+    expect(diff).toContain('diff --git');
+    expect(calls).toEqual([['deadbeef', 'HEAD']]);
+  });
+
   it('unifiedDiff is empty when base is HEAD (no commits since)', async () => {
     const ctx = await openRepo(repo);
     const sha = await headSha(ctx);

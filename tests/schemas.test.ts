@@ -36,7 +36,7 @@ describe('DiffOutputSchema', () => {
       schemaVersion: 1,
       base: 'origin/main',
       head: 'abc123',
-      patch: { executable: 0, covered: 0, pct: 0 },
+      patch: { executable: 0, covered: 0, pct: 0, empty: true },
       project: { executable: 0, covered: 0, pct: 0, delta: null },
       files: [],
       ignored: [],

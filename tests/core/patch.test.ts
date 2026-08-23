@@ -43,4 +43,13 @@ describe('computePatchCoverage', () => {
     expect(result.totals).toEqual({ executable: 0, covered: 0, pct: 0 });
     expect(result.byFile.size).toBe(0);
   });
+
+  it('returns 0 executable when added lines are comments (no statement overlap)', () => {
+    const addedByFile = new Map<string, Set<number>>([
+      ['src/auth.ts', new Set([3, 4])],
+    ]);
+    const result = computePatchCoverage([auth], addedByFile);
+    expect(result.totals.executable).toBe(0);
+    expect(result.byFile.size).toBe(0);
+  });
 });
