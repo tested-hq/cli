@@ -68,6 +68,13 @@ describe('action.yml wiring', () => {
     expect(yml).toContain('install-cli.sh');
     expect(yml).not.toMatch(/node "\$BIN" check/);
   });
+
+  it('passes the same resolved --base to tested push (not the branch name main)', () => {
+    const yml = readFileSync(actionYml, 'utf8');
+    expect(yml).toMatch(/tested push --pr "\$PR" --base "\$BASE"/);
+    expect(yml).toMatch(/tested push --mainline --base "\$BASE"/);
+    expect(yml).not.toMatch(/tested push --pr "\$PR" "\$\{EXTRA_URL\[@\]\}"/);
+  });
 });
 
 describe('resolve-check-base.sh', () => {

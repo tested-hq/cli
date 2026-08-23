@@ -138,7 +138,7 @@ jobs:
       - run: pnpm test -- --coverage
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.3
+          version: 0.1.4
           push: true
           pr-number: ${{ github.event.pull_request.number }}
           token: ${{ secrets.TESTED_TOKEN }}
@@ -150,14 +150,14 @@ What the action does:
 2. `npm i -g @tested/cli@<version>` (or build from `cli-path` / `cli-ref`)
 3. `tested` on PATH
 4. `tested check` (Action defaults `--base` to the PR base SHA / previous push commit)
-5. Optional `tested push` when `push: true`
+5. Optional `tested push --base <same SHA>` when `push: true`
 
 Manual minimal gate (if CLI already on PATH):
 
 ```yaml
 - run: pnpm test -- --coverage
-- run: tested check
-- run: tested push --pr ${{ github.event.pull_request.number }}
+- run: tested check --base ${{ github.event.pull_request.base.sha }}
+- run: tested push --pr ${{ github.event.pull_request.number }} --base ${{ github.event.pull_request.base.sha }}
   env:
     TESTED_TOKEN: ${{ secrets.TESTED_TOKEN }}
 ```
