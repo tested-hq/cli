@@ -61,8 +61,8 @@ describe('package honesty', () => {
   const gettingStarted = readFileSync(join(root, 'docs/GETTING-STARTED.md'), 'utf8');
   const actionYml = readFileSync(join(root, 'action/action.yml'), 'utf8');
 
-  it('is 0.1.2 with engines.node >=24', () => {
-    expect(pkg.version).toBe('0.1.2');
+  it('is 0.1.3 with engines.node >=24', () => {
+    expect(pkg.version).toBe('0.1.3');
     expect(pkg.engines.node).toBe('>=24');
     expect(readFileSync(join(root, '.nvmrc'), 'utf8').trim()).toBe('24');
     expect(CLI_VERSION).toBe(pkg.version);
@@ -88,7 +88,7 @@ describe('package honesty', () => {
   });
 
   it('defaults the Action version input to this package version', () => {
-    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.2'/);
+    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.3'/);
     expect(actionYml).toContain('install-cli.sh');
     expect(actionYml).toMatch(/tested check --base/);
     expect(actionYml).not.toMatch(/node "\$BIN" check/);

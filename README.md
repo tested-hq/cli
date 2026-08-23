@@ -25,7 +25,7 @@ CI uses the composite Action (`tested-hq/cli/action@main`). It installs `@tested
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.2
+    version: 0.1.3
     token: ${{ secrets.TESTED_TOKEN }}
 ```
 
@@ -133,7 +133,7 @@ If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice o
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.2
+    version: 0.1.3
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}

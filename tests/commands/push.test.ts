@@ -133,6 +133,15 @@ describe('resolveApiBase / assertSafeApiBase', () => {
     expect(resolveApiBase({ env: {} })).toBe(DEFAULT_API_BASE);
   });
 
+  it('treats empty TESTED_API_URL / --url as the default', () => {
+    expect(resolveApiBase({ env: { TESTED_API_URL: '' } })).toBe(DEFAULT_API_BASE);
+    expect(resolveApiBase({ env: { TESTED_API_URL: '   ' } })).toBe(DEFAULT_API_BASE);
+    expect(resolveApiBase({ flag: '', env: {} })).toBe(DEFAULT_API_BASE);
+    expect(resolveApiBase({ flag: '  ', env: { TESTED_API_URL: '' } })).toBe(
+      DEFAULT_API_BASE,
+    );
+  });
+
   it('prefers flag, then TESTED_API_URL, strips trailing slash', () => {
     expect(
       resolveApiBase({

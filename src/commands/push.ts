@@ -234,7 +234,9 @@ export function resolveApiBase(opts: {
   env?: NodeJS.ProcessEnv;
 }): string {
   const env = opts.env ?? process.env;
-  const raw = opts.flag ?? env.TESTED_API_URL ?? DEFAULT_API_BASE;
+  const flag = opts.flag?.trim();
+  const fromEnv = env.TESTED_API_URL?.trim();
+  const raw = flag || fromEnv || DEFAULT_API_BASE;
   return assertSafeApiBase(raw);
 }
 

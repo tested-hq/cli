@@ -163,7 +163,9 @@ describe('install-cli.sh path shim', () => {
 describe('action.yml install wiring', () => {
   it('installs from npm by default and keeps cli-path / resolve-check-base', () => {
     const yml = readFileSync(actionYml, 'utf8');
-    expect(yml).toMatch(/default: '0\.1\.2'/);
+    expect(yml).toMatch(/default: '0\.1\.3'/);
+    expect(yml).not.toContain('TESTED_API_URL: ${{ inputs.api-url }}');
+    expect(yml).toContain('INPUT_API_URL: ${{ inputs.api-url }}');
     expect(yml).toContain('install-cli.sh');
     expect(yml).toContain('inputs.cli-path');
     expect(yml).toContain('resolve-check-base.sh');

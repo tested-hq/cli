@@ -5,7 +5,7 @@ describe('createProgram', () => {
   it('exposes name and version', () => {
     const program = createProgram();
     expect(program.name()).toBe('tested');
-    expect(program.version()).toBe('0.1.2');
+    expect(program.version()).toBe('0.1.3');
   });
 
   it('registers the push, doctor, and setup commands', () => {
