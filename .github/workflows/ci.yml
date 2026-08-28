@@ -42,7 +42,10 @@ jobs:
         if: github.event_name == 'pull_request'
         with:
           name: coverage-final
-          path: coverage/coverage-final.json
+          if-no-files-found: error
+          path: |
+            coverage/coverage-final.json
+            test-results/junit.xml
 
   # Separate from typecheck/test/build so an unpublished npm version or
   # Action install glitch cannot fail unit CI. Check is the gate; push
@@ -58,12 +61,21 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: coverage-final
-          path: coverage
+          path: .
+
+      - name: Place JUnit at junit.xml
+        run: |
+          set -euo pipefail
+          test -f coverage/coverage-final.json
+          test -f test-results/junit.xml
+          cp test-results/junit.xml junit.xml
+          echo "placed test-results/junit.xml -> junit.xml"
 
       - uses: ./action
         with:
-          version: '0.1.7'
+          version: '0.1.8'
           cli-path: .
           push: 'true'
+          junit: junit.xml
           pr-number: ${{ github.event.pull_request.number }}
           token: ${{ secrets.TESTED_TOKEN }}

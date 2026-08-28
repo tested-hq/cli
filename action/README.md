@@ -23,7 +23,7 @@ jobs:
 
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.7
+          version: 0.1.8
 ```
 
 ## Gate + share URL
@@ -31,7 +31,7 @@ jobs:
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.7
+    version: 0.1.8
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -41,7 +41,7 @@ jobs:
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `version` | `0.1.7` | npm version of `@tested/cli` |
+| `version` | `0.1.8` | npm version of `@tested/cli` |
 | `cli-path` | _(empty)_ | Local checkout of `tested-hq/cli` (skips npm) |
 | `cli-repository` | `tested-hq/cli` | GitHub `owner/name` for the git fallback |
 | `cli-ref` | _(empty)_ | Optional git ref instead of npm |
@@ -51,6 +51,7 @@ jobs:
 | `pr-number` | _(empty)_ | PR number for push (else `pull_request` event) |
 | `token` | _(empty)_ | Ingest token → `TESTED_TOKEN` |
 | `api-url` | _(empty)_ | Optional `TESTED_API_URL` |
+| `junit` | _(empty)_ | JUnit XML path. When empty, searches `junit.xml`, `test-results/junit.xml`, `coverage/junit.xml`, `reports/junit.xml` under the working directory. |
 | `node-version` | `24` | `actions/setup-node` version |
 
 ## Local path (monorepo / dogfood)
@@ -77,7 +78,9 @@ Node 24+.
    the Action fetches the PR base SHA / previous push commit when missing).
 2. Produce Istanbul JSON at `coverage/coverage-final.json` (or the path in
    `.tested.yaml`) **before** this action runs — e.g. `pnpm test -- --coverage`
-   or `tested run`.
+   or `tested run`. For flakes / suite time, also emit JUnit XML at
+   `junit.xml`, `test-results/junit.xml`, or `coverage/junit.xml` (or set
+   `junit:`).
 3. For `push: true`, store an ingest token as `secrets.TESTED_TOKEN`
    (mint at `https://app.tested.dev/repos/{owner}/{name}/settings`).
 

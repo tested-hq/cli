@@ -4,10 +4,20 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_JUNIT_CANDIDATES } from '../../src/commands/push.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, '../../action/run-push.sh');
 const actionYml = join(here, '../../action/action.yml');
+
+function initGit(dir: string): void {
+  spawnSync('git', ['init', '-b', 'main'], { cwd: dir, encoding: 'utf8' });
+  spawnSync('git', ['config', 'user.email', 't@tested.dev'], { cwd: dir });
+  spawnSync('git', ['config', 'user.name', 't'], { cwd: dir });
+  writeFileSync(join(dir, '.gitkeep'), '');
+  spawnSync('git', ['add', '.'], { cwd: dir });
+  spawnSync('git', ['commit', '-m', 'init', '--no-verify'], { cwd: dir });
+}
 
 function mockTested(dir: string): { bin: string; log: string } {
   const bin = join(dir, 'bin');
@@ -26,8 +36,10 @@ printf '%s\\n' "$*" >> ${JSON.stringify(log)}
 function runPush(
   env: Record<string, string>,
   bin: string,
+  cwd?: string,
 ): { stdout: string; stderr: string; status: number } {
   const result = spawnSync('bash', [script], {
+    cwd,
     env: {
       ...process.env,
       PATH: `${bin}:${process.env.PATH ?? ''}`,
@@ -44,6 +56,8 @@ function runPush(
   };
 }
 
+const SAMPLE_JUNIT = `<?xml version="1.0"?><testsuite><testcase name="ok" time="0.1"/></testsuite>`;
+
 describe('action.yml push wiring', () => {
   it('does not interpolate untrusted GitHub expressions into bash', () => {
     const yml = readFileSync(actionYml, 'utf8');
@@ -55,6 +69,12 @@ describe('action.yml push wiring', () => {
     expect(yml).not.toContain('REF="${{ github.ref_name }}"');
     expect(yml).not.toContain('PR="${{ github.event.pull_request.number }}"');
     expect(yml).not.toContain('TESTED_API_URL: ${{ inputs.api-url }}');
+    expect(yml).toContain('INPUT_JUNIT: ${{ inputs.junit }}');
+    expect(yml).toMatch(/test-results\/junit\.xml/);
+    const runPushSh = readFileSync(script, 'utf8');
+    for (const candidate of DEFAULT_JUNIT_CANDIDATES) {
+      expect(runPushSh).toContain(candidate);
+    }
     expect(yml).toContain('INPUT_BASE: ${{ inputs.base }}');
     expect(yml).toContain('PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}');
     expect(yml).toContain('ACTION_PATH: ${{ github.action_path }}');
@@ -220,6 +240,132 @@ describe('run-push.sh', () => {
       const argv = readFileSync(log, 'utf8');
       expect(argv).toContain('--url https://staging.tested.dev');
       expect(argv).not.toContain('evil.example');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('passes --junit from the explicit action input and logs the path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tested-run-push-'));
+    try {
+      initGit(dir);
+      const { bin, log } = mockTested(dir);
+      const result = runPush(
+        {
+          TESTED_TOKEN: 't',
+          EVENT_PR_NUMBER: '8',
+          INPUT_REPOSITORY: 'acme/widgets',
+          INPUT_JUNIT: 'reports/custom.xml',
+        },
+        bin,
+        dir,
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/using JUnit report reports\/custom\.xml/);
+      const argv = readFileSync(log, 'utf8');
+      expect(argv).toContain('--junit reports/custom.xml');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('auto-detects the first common JUnit path when junit input is empty', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tested-run-push-'));
+    try {
+      initGit(dir);
+      mkdirSync(join(dir, 'test-results'), { recursive: true });
+      mkdirSync(join(dir, 'coverage'), { recursive: true });
+      writeFileSync(join(dir, 'test-results', 'junit.xml'), SAMPLE_JUNIT);
+      writeFileSync(join(dir, 'coverage', 'junit.xml'), SAMPLE_JUNIT);
+      const { bin, log } = mockTested(dir);
+      const result = runPush(
+        {
+          TESTED_TOKEN: 't',
+          EVENT_PR_NUMBER: '8',
+          INPUT_REPOSITORY: 'acme/widgets',
+          INPUT_JUNIT: '',
+        },
+        bin,
+        dir,
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/using JUnit report test-results\/junit\.xml/);
+      const argv = readFileSync(log, 'utf8');
+      expect(argv).toContain('--junit test-results/junit.xml');
+      expect(argv).not.toContain('coverage/junit.xml');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers ./junit.xml over nested candidates', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tested-run-push-'));
+    try {
+      initGit(dir);
+      mkdirSync(join(dir, 'test-results'), { recursive: true });
+      writeFileSync(join(dir, 'junit.xml'), SAMPLE_JUNIT);
+      writeFileSync(join(dir, 'test-results', 'junit.xml'), SAMPLE_JUNIT);
+      const { bin, log } = mockTested(dir);
+      const result = runPush(
+        {
+          TESTED_TOKEN: 't',
+          EVENT_PR_NUMBER: '8',
+          INPUT_REPOSITORY: 'acme/widgets',
+        },
+        bin,
+        dir,
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/using JUnit report junit\.xml/);
+      expect(readFileSync(log, 'utf8')).toContain('--junit junit.xml');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('lets an explicit junit input win over auto-detected files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tested-run-push-'));
+    try {
+      initGit(dir);
+      writeFileSync(join(dir, 'junit.xml'), SAMPLE_JUNIT);
+      writeFileSync(join(dir, 'custom.xml'), SAMPLE_JUNIT);
+      const { bin, log } = mockTested(dir);
+      const result = runPush(
+        {
+          TESTED_TOKEN: 't',
+          EVENT_PR_NUMBER: '8',
+          INPUT_REPOSITORY: 'acme/widgets',
+          INPUT_JUNIT: 'custom.xml',
+        },
+        bin,
+        dir,
+      );
+      expect(result.status).toBe(0);
+      const argv = readFileSync(log, 'utf8');
+      expect(argv).toContain('--junit custom.xml');
+      expect(argv).not.toContain('--junit junit.xml');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('omits --junit when no report exists', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tested-run-push-'));
+    try {
+      initGit(dir);
+      const { bin, log } = mockTested(dir);
+      const result = runPush(
+        {
+          TESTED_TOKEN: 't',
+          EVENT_PR_NUMBER: '8',
+          INPUT_REPOSITORY: 'acme/widgets',
+        },
+        bin,
+        dir,
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).not.toMatch(/JUnit report/);
+      expect(readFileSync(log, 'utf8')).not.toContain('--junit');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

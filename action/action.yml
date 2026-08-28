@@ -9,10 +9,10 @@ branding:
 inputs:
   version:
     description: >
-      npm version of @tested/cli to install (e.g. 0.1.7).
+      npm version of @tested/cli to install (e.g. 0.1.8).
       Ignored when cli-path or cli-ref is set.
     required: false
-    default: '0.1.7'
+    default: '0.1.8'
   cli-path:
     description: >
       Local path to a checkout of tested-hq/cli (already on the runner).
@@ -66,8 +66,9 @@ inputs:
     default: ''
   junit:
     description: >-
-      Path to JUnit XML for test analytics (flakes / slowest). Also auto-detects
-      junit.xml under the working directory. Sets TESTED_JUNIT for tested push.
+      Path to JUnit XML for test analytics (flakes / slowest). When empty,
+      searches junit.xml, test-results/junit.xml, coverage/junit.xml, and
+      reports/junit.xml under the working directory. Sets TESTED_JUNIT.
     required: false
     default: ''
   node-version:

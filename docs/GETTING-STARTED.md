@@ -121,6 +121,7 @@ Useful flags:
 | `--url` | `https://app.tested.dev` (`TESTED_API_URL`; other hosts need `TESTED_ALLOW_CUSTOM_API_URL=1`) |
 | `--owner` / `--name` | `GITHUB_REPOSITORY`, else `git remote origin` |
 | `--pr` | `GITHUB_PR_NUMBER` / `PR_NUMBER` |
+| `--junit` | JUnit XML (`TESTED_JUNIT`, or auto-detect `junit.xml` / `test-results/junit.xml` / `coverage/junit.xml`) |
 | `--json` | print `{ shareUrl, expiresAt }` on stdout |
 
 Errors are guided (missing token, repo not found, bad token).
@@ -142,7 +143,7 @@ jobs:
       - run: pnpm test -- --coverage
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.7
+          version: 0.1.8
           push: true
           pr-number: ${{ github.event.pull_request.number }}
           token: ${{ secrets.TESTED_TOKEN }}

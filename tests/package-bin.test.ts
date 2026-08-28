@@ -63,8 +63,8 @@ describe('package honesty', () => {
   const runPushSh = readFileSync(join(root, 'action/run-push.sh'), 'utf8');
   const ciYml = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
 
-  it('is 0.1.7 with engines.node >=24', () => {
-    expect(pkg.version).toBe('0.1.7');
+  it('is 0.1.8 with engines.node >=24', () => {
+    expect(pkg.version).toBe('0.1.8');
     expect(pkg.engines.node).toBe('>=24');
     expect(readFileSync(join(root, '.nvmrc'), 'utf8').trim()).toBe('24');
     expect(CLI_VERSION).toBe(pkg.version);
@@ -90,7 +90,7 @@ describe('package honesty', () => {
   });
 
   it('defaults the Action version input to this package version', () => {
-    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.7'/);
+    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.8'/);
     expect(actionYml).toContain('install-cli.sh');
     expect(actionYml).toContain('run-push.sh');
     expect(actionYml).toMatch(/tested check --base/);
@@ -102,7 +102,7 @@ describe('package honesty', () => {
 
   it('dogfoods hobby push on PRs without hardcoding the token', () => {
     expect(ciYml).toContain('uses: ./action');
-    expect(ciYml).toContain("version: '0.1.7'");
+    expect(ciYml).toContain("version: '0.1.8'");
     expect(ciYml).toContain("push: 'true'");
     expect(ciYml).toContain('pr-number: ${{ github.event.pull_request.number }}');
     expect(ciYml).toContain('token: ${{ secrets.TESTED_TOKEN }}');
@@ -111,6 +111,9 @@ describe('package honesty', () => {
     expect(ciYml).toMatch(/name: tested check \+ hobby push/);
     expect(ciYml).toMatch(/needs:\s*test/);
     expect(ciYml).toContain('coverage-final.json');
+    expect(ciYml).toContain('test-results/junit.xml');
+    expect(ciYml).toContain('junit: junit.xml');
+    expect(ciYml).toContain('cp test-results/junit.xml junit.xml');
     const testJob = ciYml.slice(
       ciYml.indexOf('name: typecheck + test + build'),
       ciYml.indexOf('name: tested check + hobby push'),

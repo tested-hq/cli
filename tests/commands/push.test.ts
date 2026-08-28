@@ -21,8 +21,10 @@ import {
   fetchGitHubPullBase,
   resolvePrPushBase,
   DEFAULT_API_BASE,
+  DEFAULT_JUNIT_CANDIDATES,
   type IngestBody,
 } from '../../src/commands/push.js';
+import { TestReportSchema } from '../../src/core/junit.js';
 import type { DiffOutput, TestedConfig } from '../../src/schemas.js';
 import type { GitContext } from '../../src/git.js';
 
@@ -1022,6 +1024,59 @@ describe('executePush', () => {
       );
       expect(ok.exitCode).toBe(0);
       expect(posted?.testReport?.totals.tests).toBe(1);
+      expect(TestReportSchema.parse(posted?.testReport).source).toBe('junit');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('attaches testReport from an auto-detected test-results/junit.xml', async () => {
+    const xml = `<?xml version="1.0"?><testsuite><testcase classname="s" name="slow" time="1.5"/><testcase name="ok" time="0.1"/></testsuite>`;
+    const computeDiffFn = vi.fn(async () => makeDiff());
+    let posted: IngestBody | undefined;
+    const fetchFn: typeof fetch = async (_url, init) => {
+      posted = JSON.parse(String(init?.body)) as IngestBody;
+      return new Response(JSON.stringify({ shareUrl: 'https://app.tested.dev/s/auto' }), {
+        status: 200,
+      });
+    };
+    const ctx: GitContext = {
+      git: {
+        raw: async (args: string[]) => {
+          if (args[0] === 'remote') return 'git@github.com:o/n.git\n';
+          if (args[0] === 'config') return 'u\n';
+          return '\n';
+        },
+        revparse: async (args: string[]) =>
+          args[0] === 'HEAD' ? 'h\n' : 'b\n',
+      } as unknown as GitContext['git'],
+      repoRoot: '/repo',
+    };
+    const { writeFileSync, mkdirSync, mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'tested-junit-auto-'));
+    mkdirSync(join(dir, 'test-results'), { recursive: true });
+    writeFileSync(join(dir, 'test-results', 'junit.xml'), xml);
+    try {
+      const ok = await executePush(
+        { json: false, token: 't', pr: '1', owner: 'o', name: 'n' },
+        {
+          cwd: dir,
+          env: {},
+          computeDiffFn: computeDiffFn as unknown as typeof import('../../src/core/computeDiff.js').computeDiff,
+          fetchFn,
+          openRepoFn: async () => ctx,
+          loadConfigFn: async () => makeConfig(),
+          onProgress: () => {},
+        },
+      );
+      expect(ok.exitCode).toBe(0);
+      expect(posted?.testReport).toBeDefined();
+      const report = TestReportSchema.parse(posted?.testReport);
+      expect(report.totals.tests).toBe(2);
+      expect(report.totals.durationMs).toBe(1600);
+      expect(report.slowest[0]?.name).toBe('slow');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1211,6 +1266,13 @@ describe('resolveJunitPath / loadTestReportFromJunit', () => {
     const { resolveJunitPath, loadTestReportFromJunit } = await import(
       '../../src/commands/push.js'
     );
+    expect(DEFAULT_JUNIT_CANDIDATES).toEqual([
+      'junit.xml',
+      'test-results/junit.xml',
+      'coverage/junit.xml',
+      'reports/junit.xml',
+    ]);
+
     expect(
       resolveJunitPath({
         cwd: '/repo',
@@ -1231,9 +1293,35 @@ describe('resolveJunitPath / loadTestReportFromJunit', () => {
       resolveJunitPath({
         cwd: '/repo',
         env: {},
+        existsSyncFn: ((p: string) => p.endsWith('test-results/junit.xml')) as typeof import('node:fs').existsSync,
+      }),
+    ).toBe('/repo/test-results/junit.xml');
+
+    expect(
+      resolveJunitPath({
+        cwd: '/repo',
+        env: {},
+        existsSyncFn: ((p: string) => p.endsWith('coverage/junit.xml')) as typeof import('node:fs').existsSync,
+      }),
+    ).toBe('/repo/coverage/junit.xml');
+
+    expect(
+      resolveJunitPath({
+        cwd: '/repo',
+        env: {},
         existsSyncFn: ((p: string) => p.endsWith('junit.xml')) as typeof import('node:fs').existsSync,
       }),
     ).toBe('/repo/junit.xml');
+
+    expect(
+      resolveJunitPath({
+        cwd: '/repo',
+        flag: 'explicit.xml',
+        env: { TESTED_JUNIT: 'reports/junit.xml' },
+        existsSyncFn: ((p: string) =>
+          p.endsWith('explicit.xml') || p.endsWith('junit.xml')) as typeof import('node:fs').existsSync,
+      }),
+    ).toBe('/repo/explicit.xml');
 
     expect(() =>
       resolveJunitPath({
@@ -1243,11 +1331,20 @@ describe('resolveJunitPath / loadTestReportFromJunit', () => {
       }),
     ).toThrow(/TESTED_JUNIT file not found/);
 
+    expect(() =>
+      resolveJunitPath({
+        cwd: '/repo',
+        flag: 'missing.xml',
+        env: {},
+        existsSyncFn: (() => false) as typeof import('node:fs').existsSync,
+      }),
+    ).toThrow(/JUnit file not found/);
+
     const xml = `<?xml version="1.0"?><testsuite><testcase name="a" time="0.2"/></testsuite>`;
     const report = loadTestReportFromJunit(
       '/x.xml',
       (() => xml) as unknown as typeof import('node:fs').readFileSync,
     );
-    expect(report.totals.tests).toBe(1);
+    expect(TestReportSchema.parse(report).totals.tests).toBe(1);
   });
 });
