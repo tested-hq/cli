@@ -112,6 +112,8 @@ describe('package honesty', () => {
     expect(ciYml).toMatch(/needs:\s*test/);
     expect(ciYml).toContain('coverage-final.json');
     expect(ciYml).toContain('test-results/junit.xml');
+    expect(ciYml).toContain('junit: junit.xml');
+    expect(ciYml).toContain('cp test-results/junit.xml junit.xml');
     const testJob = ciYml.slice(
       ciYml.indexOf('name: typecheck + test + build'),
       ciYml.indexOf('name: tested check + hobby push'),

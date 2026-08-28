@@ -42,6 +42,7 @@ jobs:
         if: github.event_name == 'pull_request'
         with:
           name: coverage-final
+          if-no-files-found: error
           path: |
             coverage/coverage-final.json
             test-results/junit.xml
@@ -62,10 +63,19 @@ jobs:
           name: coverage-final
           path: .
 
+      - name: Place JUnit at junit.xml
+        run: |
+          set -euo pipefail
+          test -f coverage/coverage-final.json
+          test -f test-results/junit.xml
+          cp test-results/junit.xml junit.xml
+          echo "placed test-results/junit.xml -> junit.xml"
+
       - uses: ./action
         with:
           version: '0.1.8'
           cli-path: .
           push: 'true'
+          junit: junit.xml
           pr-number: ${{ github.event.pull_request.number }}
           token: ${{ secrets.TESTED_TOKEN }}
