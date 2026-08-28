@@ -3,6 +3,7 @@ import {
   buildTestReportFromCases,
   parseJunitToTestReport,
   parseJunitXml,
+  TestReportSchema,
 } from '../src/core/junit.js';
 
 const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
@@ -33,7 +34,12 @@ describe('junit parse', () => {
 
   it('marks flake when fail then pass', () => {
     const report = parseJunitToTestReport(SAMPLE);
+    expect(TestReportSchema.parse(report).schemaVersion).toBe(1);
+    expect(report.source).toBe('junit');
     expect(report.totals.flaky).toBe(1);
+    expect(report.totals.passed).toBe(3);
+    expect(report.totals.failed).toBe(1);
+    expect(report.totals.skipped).toBe(1);
     expect(report.flakes[0]?.name).toBe('retry me');
     expect(report.failures.some((f) => f.name === 'login fail')).toBe(true);
     expect(report.slowest[0]?.name).toBe('big');

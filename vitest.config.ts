@@ -10,6 +10,10 @@ export default defineConfig({
     // Git fixture setup is slower under coverage (husky pre-push).
     hookTimeout: 60_000,
     testTimeout: 30_000,
+    reporters: ['default', 'junit'],
+    outputFile: {
+      junit: './test-results/junit.xml',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json'],

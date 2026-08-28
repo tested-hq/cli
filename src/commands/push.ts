@@ -613,12 +613,13 @@ export function buildMainlineIngestBody(input: {
   };
 }
 
-const DEFAULT_JUNIT_CANDIDATES = [
+/** Common vitest/jest/CI report paths. Keep in sync with action/run-push.sh. */
+export const DEFAULT_JUNIT_CANDIDATES = [
   'junit.xml',
   'test-results/junit.xml',
   'coverage/junit.xml',
   'reports/junit.xml',
-];
+] as const;
 
 /**
  * Resolve JUnit XML path: --junit flag, TESTED_JUNIT env, then common paths.
@@ -1046,7 +1047,7 @@ export async function executePush(
       env,
     });
     if (junitPath) {
-      onProgress('parsing JUnit…');
+      onProgress(`parsing JUnit (${junitPath})…`);
       testReport = loadTestReportFromJunit(junitPath);
     }
   } catch (err) {
@@ -1138,7 +1139,7 @@ export function registerPushCommand(program: Command): void {
     .option('--base <ref>', 'Git base ref to diff against (same as `tested diff --base`)')
     .option(
       '--junit <path>',
-      'JUnit XML for test analytics (flakes / slowest). Also TESTED_JUNIT or junit.xml',
+      'JUnit XML for test analytics (flakes / slowest). Also TESTED_JUNIT or auto-detect junit.xml / test-results/junit.xml / coverage/junit.xml',
     )
     .option('--json', 'Emit machine-readable JSON instead of the share URL only', false)
     .action(async (opts: PushCliOpts) => {

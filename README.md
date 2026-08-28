@@ -25,7 +25,7 @@ CI uses the composite Action (`tested-hq/cli/action@main`). It installs `@tested
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.7
+    version: 0.1.8
     token: ${{ secrets.TESTED_TOKEN }}
 ```
 
@@ -135,7 +135,7 @@ If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice o
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.7
+    version: 0.1.8
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -173,6 +173,7 @@ $ tested push
 | `--owner` / `--name` | Repo identity (default: `GITHUB_REPOSITORY`, else `origin` remote) |
 | `--pr-title`, `--author`, `--base-ref`, `--head-ref` | PR metadata overrides |
 | `--base` | Git base for the coverage diff (same as `tested diff --base`) |
+| `--junit` / `TESTED_JUNIT` | JUnit XML for flakes / suite time (or auto-detect `junit.xml`, `test-results/junit.xml`, `coverage/junit.xml`) |
 | `--run-url` | Optional CI run URL |
 | `--json` | Machine output: `{ "shareUrl", "expiresAt?" }` |
 

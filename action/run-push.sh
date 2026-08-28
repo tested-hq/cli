@@ -43,8 +43,20 @@ if [ -n "${INPUT_API_URL:-}" ]; then
   export TESTED_ALLOW_CUSTOM_API_URL=1
 fi
 
+# Prefer an explicit junit input; otherwise the first common report under cwd
+# (the Action step already sets working-directory).
+# Candidate order must match DEFAULT_JUNIT_CANDIDATES in src/commands/push.ts.
+if [ -z "${INPUT_JUNIT:-}" ]; then
+  for candidate in junit.xml test-results/junit.xml coverage/junit.xml reports/junit.xml; do
+    if [ -f "$candidate" ]; then
+      INPUT_JUNIT="$candidate"
+      break
+    fi
+  done
+fi
 if [ -n "${INPUT_JUNIT:-}" ]; then
   export TESTED_JUNIT="$INPUT_JUNIT"
+  echo "tested push: using JUnit report $INPUT_JUNIT"
 fi
 
 if [ -n "${INPUT_PR_NUMBER:-}" ]; then

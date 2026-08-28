@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+/**
+ * Compact JUnit-derived analytics attached to ingest as `testReport`.
+ * Must stay in sync with app `lib/test-report.ts` (schemaVersion 1).
+ */
+
 /** Single test identity for grouping retries / flakes. */
 export function testCaseKey(classname: string | undefined, name: string): string {
   return `${classname ?? ''}\0${name}`;
