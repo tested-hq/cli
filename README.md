@@ -258,3 +258,18 @@ Typical CI step after `tested check`:
   env:
     TESTED_TOKEN: ${{ secrets.TESTED_TOKEN }}
 ```
+
+## Release
+
+Ship `@tested/cli` from a GitHub Release. `.github/workflows/release.yml` publishes to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC). No `NPM_TOKEN`.
+
+1. Bump `version` in `package.json` on `main` and merge.
+2. From that commit: `gh release create vX.Y.Z --generate-notes` (tag must match `package.json`, e.g. `v0.1.9` → `0.1.9`).
+
+One-time npmjs.com setup (package settings → Trusted Publisher → GitHub Actions):
+
+- Organization: `tested-hq`
+- Repository: `cli`
+- Workflow filename: `release.yml`
+- Environment: (none)
+- Allowed action: `npm publish`

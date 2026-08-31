@@ -1,0 +1,71 @@
+name: release
+
+# Ship button: `gh release create vX.Y.Z --generate-notes` from a main commit
+# whose package.json version is X.Y.Z.
+# npm trusted publishing matches this filename exactly (release.yml).
+on:
+  release:
+    types: [published]
+  # Retries only — still refuses to publish unless the ref is a real vX.Y.Z tag.
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: publish @tested/cli
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+          # standalone install — bypasses the runner's default Node
+          # (too old for this package's engines.node)
+          standalone: true
+
+      # No registry-url: setup-node would write an .npmrc with an empty /
+      # placeholder _authToken that blocks the npm OIDC handshake.
+      # Do not set NODE_AUTH_TOKEN or NPM_TOKEN. Trusted publishing uses OIDC.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Verify release tag matches package.json
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="$RELEASE_TAG"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Ref '$TAG' is not a vX.Y.Z release tag. Refusing to publish."
+            echo "Create a GitHub Release from a tag like v0.1.9 (package.json must be 0.1.9)."
+            echo "workflow_dispatch only publishes when run on that tag — not on main."
+            exit 1
+          fi
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          EXPECTED="${TAG#v}"
+          if [[ "$PKG_VERSION" != "$EXPECTED" ]]; then
+            echo "::error::package.json version ($PKG_VERSION) does not match tag ($TAG)."
+            echo "Bump version on main and merge before creating the GitHub Release."
+            exit 1
+          fi
+          echo "Publishing @tested/cli@$PKG_VERSION from tag $TAG"
+          node -v
+          npm -v
+          pnpm -v
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      - run: pnpm build
+
+      # Trusted publishing generates provenance automatically. Do not pass
+      # --provenance and do not set NPM_CONFIG_PROVENANCE=false.
+      - run: pnpm publish --access public --no-git-checks
