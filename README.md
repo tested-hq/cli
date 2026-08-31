@@ -148,7 +148,7 @@ flags:
 
 A job already scoped to one package: `tested check --flag frontend` (Action `flag:`). That coverage file **is** the flag.
 
-`--json` lists per-flag results (`flags.frontend.patchCheck` → `tested.dev / patch / frontend`) so the app can post those GitHub checks later.
+`--json` lists per-flag results (`flags.frontend.patchCheck` → `tested.dev / patch / frontend`). `tested push` sends that same `flags` map on ingest so the app can post those GitHub checks. `tested diff --json` includes it too.
 
 ## Coverage formats
 
@@ -210,7 +210,7 @@ $ tested check --json
 {"patch":{"pct":87.3,"threshold":80,"pass":true},"project":{"pct":92.1,"threshold":90,"pass":true},"overall":"pass"}
 ```
 
-When `flags` are configured, the same object includes a `flags` map (status, patch/project totals, and `tested.dev / patch / <name>` slugs).
+When `flags` are configured, `tested check --json` and `tested diff --json` include a `flags` map (status, patch/project totals, and `tested.dev / patch / <name>` slugs). `tested push` posts that same map as a sibling field on the ingest body.
 
 `--json` suppresses the human layout; the exit code is unchanged.
 

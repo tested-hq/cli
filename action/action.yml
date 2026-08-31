@@ -176,6 +176,7 @@ runs:
         INPUT_COMPLETE: ${{ inputs.complete }}
         INPUT_RUN_ID: ${{ inputs.run-id }}
         INPUT_SHARD: ${{ inputs.shard }}
+        INPUT_FLAG: ${{ inputs.flag }}
         INPUT_MAINLINE: ${{ inputs.mainline }}
         INPUT_REPOSITORY: ${{ github.repository }}
         INPUT_BASE: ${{ inputs.base }}

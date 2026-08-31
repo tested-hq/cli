@@ -3,11 +3,13 @@ import {
   evaluateFlags,
   filterFilesByFlag,
   flagsPass,
+  flagsToJson,
   MISSING_FLAG_REASON,
   pathMatchesFlag,
   resolveFlagThresholds,
   unknownFlagError,
 } from '../../src/core/flags.js';
+import { FlagsJsonMapSchema } from '../../src/schemas.js';
 import type { FileCoverage } from '../../src/core/istanbul.js';
 import type { TestedConfig } from '../../src/schemas.js';
 
@@ -145,5 +147,21 @@ describe('evaluateFlags', () => {
       }),
     ).toThrow(/unknown flag "mobile"/);
     expect(unknownFlagError('mobile', ['frontend', 'backend']).message).toContain('frontend, backend');
+  });
+});
+
+describe('flagsToJson', () => {
+  it('matches the ingest / check --json map (including fail slugs)', () => {
+    const results = evaluateFlags({
+      config: config(),
+      files: [web, api],
+      addedByFile: addedBoth(),
+    });
+    const json = flagsToJson(results);
+    expect(() => FlagsJsonMapSchema.parse(json)).not.toThrow();
+    expect(json.frontend?.status).toBe('fail');
+    expect(json.frontend?.patchCheck).toBe('tested.dev / patch / frontend');
+    expect(json.frontend?.patch.pct).toBe(80);
+    expect(json.backend?.status).toBe('pass');
   });
 });

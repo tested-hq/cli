@@ -16,6 +16,7 @@ import {
 import {
   evaluateFlags,
   flagsPass,
+  flagsToJson,
   type FlagCheckResult,
 } from '../core/flags.js';
 import type { FileCoverage } from '../core/istanbul.js';
@@ -134,22 +135,6 @@ function formatMetricLine(
  *
  * Kept free of process.* / fs / network so it's trivially unit-testable.
  */
-function flagsToJson(results: readonly FlagCheckResult[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const flag of results) {
-    out[flag.name] = {
-      status: flag.status,
-      present: flag.present,
-      ...(flag.reason ? { reason: flag.reason } : {}),
-      patchCheck: flag.patchCheck,
-      projectCheck: flag.projectCheck,
-      patch: flag.patch,
-      project: flag.project,
-    };
-  }
-  return out;
-}
-
 function formatFlagLines(results: readonly FlagCheckResult[]): string[] {
   if (results.length === 0) return [];
   const lines: string[] = [''];

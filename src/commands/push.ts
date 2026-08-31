@@ -2,7 +2,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
-import { computeDiff } from '../core/computeDiff.js';
+import { computeDiff, computeDiffContext } from '../core/computeDiff.js';
+import { resolveFlagsJson } from '../core/flags.js';
 import {
   formatIncompleteGateMessage,
   hasShardMetadata,
@@ -29,7 +30,8 @@ import {
   type GitContext,
 } from '../git.js';
 import { assertSafeGitRef } from '../git-ref.js';
-import type { DiffOutput, TestedConfig } from '../schemas.js';
+import type { DiffOutput, FlagsJsonMap, TestedConfig } from '../schemas.js';
+import type { FileCoverage } from '../core/istanbul.js';
 import type { TestReport } from '../core/junit.js';
 import { parseJunitToTestReport } from '../core/junit.js';
 import { dim, errorBlock, progress, shareUrl, successLine } from '../output/ui.js';
@@ -91,6 +93,8 @@ export interface PushCliOpts extends CoverageMergeCli {
   junit?: string;
   /** Coverage files to merge (repeatable `--file`). */
   file?: string[];
+  /** Action `flag` / `--flag`: this coverage file is the named flag. */
+  flag?: string;
 }
 
 export interface IngestRepo {
@@ -128,6 +132,12 @@ export interface IngestBody {
    * when `complete` is false. See `src/core/coverage-merge.ts`.
    */
   coverageMerge?: CoverageMergePayload;
+  /**
+   * Per-package results. Same map as `tested check --json` (`flagsToJson`).
+   * Omitted when no flags are configured or on a coverage-less handshake.
+   * Missing flags stay missing — no carryforward.
+   */
+  flags?: FlagsJsonMap;
 }
 
 export interface IngestSuccess {
@@ -593,6 +603,7 @@ export function buildIngestBody(input: {
   diff?: DiffOutput;
   testReport?: TestReport;
   coverageMerge?: CoverageMergePayload;
+  flags?: FlagsJsonMap;
 }): IngestBody {
   const baseRefName = toBranchName(input.baseRef);
   return {
@@ -614,6 +625,7 @@ export function buildIngestBody(input: {
     ...(input.diff ? { diff: input.diff } : {}),
     ...(input.testReport ? { testReport: input.testReport } : {}),
     ...(input.coverageMerge ? { coverageMerge: input.coverageMerge } : {}),
+    ...(input.flags ? { flags: input.flags } : {}),
   };
 }
 
@@ -628,6 +640,7 @@ export function buildMainlineIngestBody(input: {
   diff?: DiffOutput;
   testReport?: TestReport;
   coverageMerge?: CoverageMergePayload;
+  flags?: FlagsJsonMap;
 }): IngestBody {
   return {
     repo: {
@@ -642,6 +655,7 @@ export function buildMainlineIngestBody(input: {
     headSha: input.headSha,
     ...(input.testReport ? { testReport: input.testReport } : {}),
     ...(input.coverageMerge ? { coverageMerge: input.coverageMerge } : {}),
+    ...(input.flags ? { flags: input.flags } : {}),
   };
 }
 
@@ -923,6 +937,7 @@ export interface ExecutePushDeps {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   computeDiffFn?: typeof computeDiff;
+  computeDiffContextFn?: typeof computeDiffContext;
   fetchFn?: typeof fetch;
   openRepoFn?: (cwd: string) => Promise<GitContext>;
   loadConfigFn?: typeof loadConfig;
@@ -939,7 +954,8 @@ export async function executePush(
   deps: ExecutePushDeps,
 ): Promise<PushResult> {
   const env = deps.env ?? process.env;
-  const computeDiffFn = deps.computeDiffFn ?? computeDiff;
+  const computeDiffFn = deps.computeDiffFn;
+  const computeDiffContextFn = deps.computeDiffContextFn ?? computeDiffContext;
   const fetchFn = deps.fetchFn ?? globalThis.fetch;
   const openRepoFn = deps.openRepoFn ?? openRepo;
   const loadConfigFn = deps.loadConfigFn ?? loadConfig;
@@ -1039,6 +1055,8 @@ export async function executePush(
     (cli.complete === true || merge.totalParts !== undefined);
 
   let diff: DiffOutput | undefined;
+  let files: FileCoverage[] = [];
+  let addedByFile: ReadonlyMap<string, ReadonlySet<number>> = new Map();
   if (!handshakeOnly) {
     try {
       let baseOverride = cli.base;
@@ -1056,19 +1074,44 @@ export async function executePush(
         if (resolved !== undefined) baseOverride = resolved;
       }
       onProgress('computing diff…');
-      diff = await computeDiffFn({
+      const diffOpts = {
         cwd: deps.cwd,
         config,
         ...(baseOverride !== undefined ? { baseRef: baseOverride } : {}),
         ctx,
         ...(coveragePaths.length > 0 ? { coveragePaths } : {}),
-      });
+      };
+      if (computeDiffFn) {
+        // Tests may inject computeDiff only — flags stay omitted without files.
+        diff = await computeDiffFn(diffOpts);
+      } else {
+        const computed = await computeDiffContextFn(diffOpts);
+        diff = computed.diff;
+        files = computed.files;
+        addedByFile = computed.addedByFile;
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
     }
   } else {
     onProgress('complete handshake (no local coverage)…');
+  }
+
+  let flags: FlagsJsonMap | undefined;
+  // Injected computeDiffFn has no file list — do not invent missing flags.
+  if (!handshakeOnly && !computeDiffFn) {
+    try {
+      flags = resolveFlagsJson({
+        config,
+        files,
+        addedByFile,
+        ...(cli.flag && cli.flag.trim() ? { onlyFlag: cli.flag.trim() } : {}),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
+    }
   }
 
   let owner = cli.owner ?? peeked.owner ?? undefined;
@@ -1141,6 +1184,7 @@ export async function executePush(
     coverageMerge,
     ...(diff ? { diff } : {}),
     ...(testReport ? { testReport } : {}),
+    ...(flags ? { flags } : {}),
   };
 
   const body = mainline
@@ -1248,6 +1292,10 @@ export function registerPushCommand(program: Command): void {
     .option('--part <n>', '1-based shard index')
     .option('--run-id <id>', 'CI run id grouping shards for one SHA (or TESTED_RUN_ID)')
     .option('--shard <id>', 'Optional shard label (or TESTED_SHARD)')
+    .option(
+      '--flag <name>',
+      'This coverage file is the named flag (job already scoped — omit other packages)',
+    )
     .option('--json', 'Emit machine-readable JSON instead of the share URL only', false)
     .action(async (opts: PushCliOpts) => {
       try {

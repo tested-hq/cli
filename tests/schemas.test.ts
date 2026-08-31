@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { TestedConfigSchema, DiffOutputSchema } from '../src/schemas.js';
+import {
+  TestedConfigSchema,
+  DiffOutputSchema,
+  FlagsJsonMapSchema,
+} from '../src/schemas.js';
 
 describe('TestedConfigSchema', () => {
   it('accepts an empty object and fills defaults', () => {
@@ -99,5 +103,21 @@ describe('DiffOutputSchema', () => {
       ignored: [],
     });
     expect(result.schemaVersion).toBe(1);
+  });
+});
+
+describe('FlagsJsonMapSchema', () => {
+  it('accepts the tested check --json flags map', () => {
+    const parsed = FlagsJsonMapSchema.parse({
+      frontend: {
+        status: 'fail',
+        present: true,
+        patchCheck: 'tested.dev / patch / frontend',
+        projectCheck: 'tested.dev / project / frontend',
+        patch: { pct: 80, threshold: 90, pass: false, executable: 5, covered: 4 },
+        project: { pct: 83.3, threshold: 50, pass: true, executable: 6, covered: 5 },
+      },
+    });
+    expect(parsed.frontend?.patchCheck).toBe('tested.dev / patch / frontend');
   });
 });

@@ -73,6 +73,7 @@ describe('action.yml push wiring', () => {
     expect(yml).toContain('INPUT_FILES: ${{ inputs.files }}');
     expect(yml).toContain('INPUT_PARTS: ${{ inputs.parts }}');
     expect(yml).toContain('INPUT_COMPLETE: ${{ inputs.complete }}');
+    expect(yml).toContain('INPUT_FLAG: ${{ inputs.flag }}');
     expect(yml).toMatch(/test-results\/junit\.xml/);
     const runPushSh = readFileSync(script, 'utf8');
     for (const candidate of DEFAULT_JUNIT_CANDIDATES) {
@@ -401,6 +402,26 @@ describe('run-push.sh', () => {
       expect(argv).toContain('--incomplete');
       expect(argv).toContain('--shard node');
       expect(argv).toContain('--run-id 99');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('passes --flag when the job is scoped to one package', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tested-run-push-'));
+    try {
+      const { bin, log } = mockTested(dir);
+      const result = runPush(
+        {
+          TESTED_TOKEN: 't',
+          EVENT_PR_NUMBER: '8',
+          INPUT_REPOSITORY: 'acme/widgets',
+          INPUT_FLAG: 'frontend',
+        },
+        bin,
+      );
+      expect(result.status).toBe(0);
+      expect(readFileSync(log, 'utf8')).toContain('--flag frontend');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

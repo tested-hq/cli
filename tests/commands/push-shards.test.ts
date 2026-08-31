@@ -126,6 +126,7 @@ describe('tested push — shard handshake', () => {
     expect(result.complete).toBe(true);
     expect(computeDiffFn).not.toHaveBeenCalled();
     expect(capture.body?.diff).toBeUndefined();
+    expect(capture.body?.flags).toBeUndefined();
     expect(capture.body?.coverageMerge).toEqual({ complete: true });
   });
 
