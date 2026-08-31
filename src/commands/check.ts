@@ -129,6 +129,14 @@ function formatMetricLine(
   return `${indent}${label.padEnd(8)}  ${pctStr}%  (threshold ${threshold})  ${status}`;
 }
 
+/** Present-flag metrics always have numbers. Missing flags never reach here. */
+function presentPct(metric: FlagCheckResult['patch']): { pct: number; pass: boolean } {
+  if (metric.pct === undefined || metric.pass === undefined) {
+    throw new Error('present flag metric missing pct/pass');
+  }
+  return { pct: metric.pct, pass: metric.pass };
+}
+
 /**
  * Pure function: given a loaded config + a precomputed DiffOutput, decide
  * whether the gate passes and produce stdout/stderr buffers + an exit code.
@@ -151,16 +159,18 @@ function formatFlagLines(results: readonly FlagCheckResult[]): string[] {
         `    ${'Patch'.padEnd(8)}  ${dim('-')}  ${EMPTY_PATCH_REASON}  ${badge('skip')}`,
       );
     } else {
+      const patch = presentPct(flag.patch);
       lines.push(
-        formatMetricLine('Patch', flag.patch.pct, flag.patch.threshold, flag.patch.pass, '    '),
+        formatMetricLine('Patch', patch.pct, flag.patch.threshold, patch.pass, '    '),
       );
     }
+    const project = presentPct(flag.project);
     lines.push(
       formatMetricLine(
         'Project',
-        flag.project.pct,
+        project.pct,
         flag.project.threshold,
-        flag.project.pass,
+        project.pass,
         '    ',
       ),
     );
