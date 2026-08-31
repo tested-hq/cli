@@ -126,4 +126,32 @@ describe('package honesty', () => {
       /name: tested push \(optional\)\s*\n\s+if: inputs\.push == 'true'\s*\n\s+continue-on-error: true/,
     );
   });
+
+  it('publishes from GitHub Releases via npm trusted publishing (no token)', () => {
+    const releaseYml = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
+    expect(releaseYml).toMatch(/on:\s*\n\s*release:\s*\n\s*types:\s*\[published\]/);
+    expect(releaseYml).not.toMatch(/pull_request/);
+    expect(releaseYml).toContain('id-token: write');
+    expect(releaseYml).toContain('contents: read');
+    expect(releaseYml).toContain('ubuntu-latest');
+    expect(releaseYml).not.toMatch(/self-hosted/);
+    expect(releaseYml).not.toMatch(/^\s*environment:/m);
+    expect(releaseYml).not.toMatch(
+      /^\s*(NODE_AUTH_TOKEN|NPM_TOKEN|NPM_CONFIG_PROVENANCE)\s*:/m,
+    );
+    expect(releaseYml).not.toMatch(/secrets\.(NPM_TOKEN|NODE_AUTH_TOKEN)/);
+    expect(releaseYml).not.toMatch(/^\s*registry-url:/m);
+    expect(releaseYml).not.toMatch(/--provenance|NPM_CONFIG_PROVENANCE/);
+    expect(releaseYml).toContain('pnpm install --frozen-lockfile');
+    expect(releaseYml).toContain('pnpm typecheck');
+    expect(releaseYml).toContain('pnpm test');
+    expect(releaseYml).toContain('pnpm build');
+    expect(releaseYml).toContain('pnpm publish --access public --no-git-checks');
+    expect(readme).toContain('## Release');
+    expect(readme).toContain('gh release create vX.Y.Z --generate-notes');
+    expect(readme).toContain('release.yml');
+    expect(readme).toContain('tested-hq');
+    expect(readme).toMatch(/Allowed action:\s*`?npm publish`?/);
+    expect(readme).not.toMatch(/paste.*NPM_TOKEN|NPM_TOKEN=.+|secrets\.NPM_TOKEN/i);
+  });
 });
