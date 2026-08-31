@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { openRepo } from '../git.js';
-import { parseIstanbul, type FileCoverage } from '../core/istanbul.js';
+import { parseCoverage } from '../core/coverage.js';
+import type { FileCoverage } from '../core/istanbul.js';
 import { assertWithinRoot } from '../core/assert-within-root.js';
 import { badge, dim, heading } from '../output/ui.js';
 
@@ -92,7 +93,11 @@ export function registerExplainCommand(program: Command): void {
         const ctx = await openRepo(cwd);
         const coveragePath = resolve(cwd, config.coverage.path);
         assertWithinRoot(ctx.repoRoot, coveragePath);
-        const files = await parseIstanbul({ path: coveragePath, repoRoot: ctx.repoRoot });
+        const files = await parseCoverage({
+          path: coveragePath,
+          repoRoot: ctx.repoRoot,
+          ...(config.coverage.format ? { format: config.coverage.format } : {}),
+        });
         const file = files.find((f) => f.path === relPath);
         if (!file) {
           process.stderr.write(`error: no coverage data for ${relPath}\n`);

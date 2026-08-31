@@ -1,10 +1,14 @@
 import { z } from 'zod';
+import { COVERAGE_FORMATS } from './core/coverage.js';
+
+export const CoverageFormatSchema = z.enum(COVERAGE_FORMATS);
 
 export const TestedConfigSchema = z.object({
   ignores: z.array(z.string()).default([]),
   coverage: z
     .object({
-      format: z.literal('istanbul-json').default('istanbul-json'),
+      /** Omit to auto-detect from path and file contents. */
+      format: CoverageFormatSchema.optional(),
       path: z.string().default('coverage/coverage-final.json'),
     })
     .prefault({}),
@@ -23,6 +27,7 @@ export const TestedConfigSchema = z.object({
 });
 
 export type TestedConfig = z.infer<typeof TestedConfigSchema>;
+export type CoverageFormat = z.infer<typeof CoverageFormatSchema>;
 
 export const UncoveredRangeSchema = z.object({
   start: z.number().int().positive(),

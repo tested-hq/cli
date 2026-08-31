@@ -1,0 +1,16 @@
+{
+  "RSpec": {
+    "coverage": {
+      "/repo/src/auth.rb": {
+        "lines": [3, null, null, null, 0, null, null, null, 2, 0]
+      },
+      "/repo/src/util.rb": {
+        "lines": [null, 1, 1]
+      },
+      "/repo/src/migrations/001.rb": {
+        "lines": [0]
+      }
+    },
+    "timestamp": 1710000000
+  }
+}

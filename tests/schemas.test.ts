@@ -5,7 +5,7 @@ describe('TestedConfigSchema', () => {
   it('accepts an empty object and fills defaults', () => {
     const parsed = TestedConfigSchema.parse({});
     expect(parsed.ignores).toEqual([]);
-    expect(parsed.coverage.format).toBe('istanbul-json');
+    expect(parsed.coverage.format).toBeUndefined();
     expect(parsed.coverage.path).toBe('coverage/coverage-final.json');
   });
 
@@ -22,6 +22,26 @@ describe('TestedConfigSchema', () => {
   it('accepts no thresholds (field is optional)', () => {
     const parsed = TestedConfigSchema.parse({});
     expect(parsed.thresholds).toBeUndefined();
+  });
+
+  it('accepts each coverage format and rejects unknown ones', () => {
+    for (const format of [
+      'istanbul-json',
+      'v8-json',
+      'lcov',
+      'cobertura',
+      'jacoco',
+      'gcov',
+      'simplecov',
+    ] as const) {
+      const parsed = TestedConfigSchema.parse({
+        coverage: { format, path: 'coverage/out' },
+      });
+      expect(parsed.coverage.format).toBe(format);
+    }
+    expect(() =>
+      TestedConfigSchema.parse({ coverage: { format: 'flags' } }),
+    ).toThrow();
   });
 
   it('rejects threshold values outside 0..100', () => {

@@ -1,0 +1,15 @@
+        -:    0:Source:src/auth.c
+        -:    0:Graph:auth.gcno
+        -:    0:Data:auth.gcda
+        -:    0:Runs:1
+        3:    1:int login(int user) {
+        -:    2:    if (!user) {
+        -:    3:        return 0;
+        -:    4:    }
+    #####:    5:    return deny();
+        -:    6:}
+        -:    7:
+        -:    8:int ok(void) {
+        2:    9:    return 1;
+    #####:   10:    return 0;
+        -:   11:}

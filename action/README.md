@@ -76,8 +76,9 @@ Node 24+.
 
 1. Checkout the repo (`actions/checkout@v4` default shallow clone is enough —
    the Action fetches the PR base SHA / previous push commit when missing).
-2. Produce Istanbul JSON at `coverage/coverage-final.json` (or the path in
-   `.tested.yaml`) **before** this action runs — e.g. `pnpm test -- --coverage`
+2. Produce coverage **before** this action runs — Istanbul/V8 JSON at
+   `coverage/coverage-final.json` by default, or the path in `.tested.yaml`
+   (lcov, Cobertura, JaCoCo, gcov text, SimpleCov). e.g. `pnpm test -- --coverage`
    or `tested run`. For flakes / suite time, also emit JUnit XML at
    `junit.xml`, `test-results/junit.xml`, or `coverage/junit.xml` (or set
    `junit:`).

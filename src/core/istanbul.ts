@@ -1,18 +1,13 @@
 import { readFile } from 'node:fs/promises';
-import { isAbsolute, relative, resolve } from 'node:path';
+import {
+  isCoveragePathInsideRoot,
+  toFileCoverage,
+  type FileCoverage,
+  type StatementCoverage,
+} from './coverage-model.js';
 
-export interface StatementCoverage {
-  id: string;
-  startLine: number;
-  endLine: number;
-  hits: number;
-}
-
-export interface FileCoverage {
-  path: string;
-  absPath: string;
-  statements: StatementCoverage[];
-}
+export type { FileCoverage, StatementCoverage };
+export { isCoveragePathInsideRoot };
 
 interface IstanbulStatementLoc {
   start: { line: number; column: number };
@@ -25,21 +20,42 @@ interface IstanbulFile {
   s: Record<string, number>;
 }
 
-/**
- * True when a resolved coverage entry path is inside repoRoot.
- * Rejects `../` escapes and absolute paths that land outside the root.
- */
-export function isCoveragePathInsideRoot(
+export function parseIstanbulString(
+  raw: string,
   repoRoot: string,
-  entryPath: string,
-): boolean {
-  const root = resolve(repoRoot);
-  const absPath = resolve(entryPath);
-  const relPath = relative(root, absPath).split('\\').join('/');
-  if (!relPath || relPath === '') return true;
-  if (isAbsolute(relPath)) return false;
-  if (relPath === '..' || relPath.startsWith('../')) return false;
-  return true;
+  pathForError?: string,
+): FileCoverage[] {
+  let data: Record<string, IstanbulFile>;
+  try {
+    data = JSON.parse(raw) as Record<string, IstanbulFile>;
+  } catch {
+    throw new Error(
+      `Istanbul/V8 JSON is not valid JSON${pathForError ? ` (${pathForError})` : ''}`,
+    );
+  }
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    throw new Error('Istanbul/V8 JSON must be an object of file entries');
+  }
+  const out: FileCoverage[] = [];
+  for (const entry of Object.values(data)) {
+    if (!entry || typeof entry !== 'object' || typeof entry.path !== 'string') {
+      continue;
+    }
+    if (!entry.statementMap || typeof entry.statementMap !== 'object') {
+      continue;
+    }
+    const statements: StatementCoverage[] = Object.entries(
+      entry.statementMap,
+    ).map(([id, loc]) => ({
+      id,
+      startLine: loc.start.line,
+      endLine: loc.end.line,
+      hits: entry.s?.[id] ?? 0,
+    }));
+    const file = toFileCoverage(repoRoot, entry.path, statements);
+    if (file) out.push(file);
+  }
+  return out;
 }
 
 export async function parseIstanbul(opts: {
@@ -52,28 +68,10 @@ export async function parseIstanbul(opts: {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       throw new Error(
-        `coverage-final.json not found at ${opts.path}. Run \`tested run\` first.`
+        `coverage-final.json not found at ${opts.path}. Run \`tested run\` first.`,
       );
     }
     throw err;
   }
-  const data = JSON.parse(raw) as Record<string, IstanbulFile>;
-  const root = resolve(opts.repoRoot);
-  const out: FileCoverage[] = [];
-  for (const entry of Object.values(data)) {
-    // Skip malicious / confused paths that escape the repository root.
-    if (!isCoveragePathInsideRoot(root, entry.path)) {
-      continue;
-    }
-    const absPath = resolve(entry.path);
-    const relPath = relative(root, absPath).split('\\').join('/');
-    const statements = Object.entries(entry.statementMap).map(([id, loc]) => ({
-      id,
-      startLine: loc.start.line,
-      endLine: loc.end.line,
-      hits: entry.s[id] ?? 0,
-    }));
-    out.push({ path: relPath, absPath, statements });
-  }
-  return out;
+  return parseIstanbulString(raw, opts.repoRoot, opts.path);
 }

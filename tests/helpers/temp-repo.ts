@@ -19,6 +19,11 @@ export interface MakeTempRepoOpts {
    * edit. Use for tests-only / docs-only fixtures.
    */
   featureFiles?: Record<string, string>;
+  /**
+   * Coverage artifact kind. `lcov` writes `coverage/lcov.info` with the same
+   * three-line hit pattern as the Istanbul default.
+   */
+  coverageKind?: 'istanbul' | 'lcov';
 }
 
 /**
@@ -64,23 +69,35 @@ export async function makeTempRepo(opts: MakeTempRepoOpts = {}): Promise<TempRep
 
   const authPath = join(repo, 'src/auth.ts');
   const hits = opts.hits ?? ([1, 0, 0] as [number, number, number]);
-  const cov = {
-    [authPath]: {
-      path: authPath,
-      statementMap: {
-        '0': { start: { line: 1, column: 0 }, end: { line: 1, column: 20 } },
-        '1': { start: { line: 2, column: 0 }, end: { line: 2, column: 20 } },
-        '2': { start: { line: 3, column: 0 }, end: { line: 3, column: 20 } },
-      },
-      fnMap: {},
-      branchMap: {},
-      s: { '0': hits[0], '1': hits[1], '2': hits[2] },
-      f: {},
-      b: {},
-    },
-  };
   await mkdir(join(repo, 'coverage'));
-  await writeFile(join(repo, 'coverage/coverage-final.json'), JSON.stringify(cov));
+  if (opts.coverageKind === 'lcov') {
+    const lcov = [
+      `SF:${authPath}`,
+      `DA:1,${hits[0]}`,
+      `DA:2,${hits[1]}`,
+      `DA:3,${hits[2]}`,
+      'end_of_record',
+      '',
+    ].join('\n');
+    await writeFile(join(repo, 'coverage/lcov.info'), lcov);
+  } else {
+    const cov = {
+      [authPath]: {
+        path: authPath,
+        statementMap: {
+          '0': { start: { line: 1, column: 0 }, end: { line: 1, column: 20 } },
+          '1': { start: { line: 2, column: 0 }, end: { line: 2, column: 20 } },
+          '2': { start: { line: 3, column: 0 }, end: { line: 3, column: 20 } },
+        },
+        fnMap: {},
+        branchMap: {},
+        s: { '0': hits[0], '1': hits[1], '2': hits[2] },
+        f: {},
+        b: {},
+      },
+    };
+    await writeFile(join(repo, 'coverage/coverage-final.json'), JSON.stringify(cov));
+  }
 
   if (opts.yaml !== undefined) {
     await writeFile(join(repo, '.tested.yaml'), opts.yaml);
