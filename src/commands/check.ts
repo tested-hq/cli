@@ -261,7 +261,7 @@ export function runCheck(input: CheckInput): CheckResult {
     if (missing.length > 0) {
       lines.push(
         dim(
-          "Missing flags fail this run (no carryforward). Collect that package's coverage or scope the job with --flag.",
+          'Flags with no files this run are skipped (not 0%). Scope the job with --flag when this coverage file is one package.',
         ),
       );
     }

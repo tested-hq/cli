@@ -49,7 +49,7 @@ export const TestedConfigSchema = z.object({
     .optional(),
   /**
    * Per-package gates. Each flag is graded from this run's coverage files
-   * only — a missing path is missing (pending/fail), never last week's totals.
+   * only — a missing path is skipped (not 0%), never another flag's totals.
    */
   flags: z.record(FlagNameSchema, FlagConfigSchema).optional(),
 });
@@ -103,11 +103,13 @@ export type UncoveredRange = z.infer<typeof UncoveredRangeSchema>;
  * One schema — do not invent a second shape for push.
  */
 export const FlagMetricJsonSchema = z.object({
-  pct: z.number().min(0).max(100),
+  /** Omitted when this flag had no files this run (`skipped: true`). */
+  pct: z.number().min(0).max(100).optional(),
   threshold: z.number().min(0).max(100),
-  pass: z.boolean(),
-  executable: z.number().int().nonnegative(),
-  covered: z.number().int().nonnegative(),
+  /** Omitted when skipped — a missing flag is not a 0% fail. */
+  pass: z.boolean().optional(),
+  executable: z.number().int().nonnegative().optional(),
+  covered: z.number().int().nonnegative().optional(),
   skipped: z.literal(true).optional(),
   reason: z.string().optional(),
 });
@@ -115,6 +117,8 @@ export const FlagMetricJsonSchema = z.object({
 export const FlagResultJsonSchema = z.object({
   status: z.enum(['pass', 'fail', 'missing']),
   present: z.boolean(),
+  /** True when this flag had no coverage files this run (not a 0% result). */
+  skipped: z.literal(true).optional(),
   reason: z.string().optional(),
   patchCheck: z.string(),
   projectCheck: z.string(),

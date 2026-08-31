@@ -101,6 +101,22 @@ export async function makeFlagRepo(opts: MakeFlagRepoOpts = {}): Promise<{
 
   const webPath = join(repo, WEB);
   const apiPath = join(repo, API);
+  await writeFlagCoverage(repo, opts);
+  await writeFile(join(repo, '.tested.yaml'), opts.yaml ?? FLAG_YAML);
+
+  return { repo, webPath, apiPath };
+}
+
+/** Rewrite coverage-final.json in an existing flag fixture (for sequential e2e runs). */
+export async function writeFlagCoverage(
+  repo: string,
+  opts: Pick<
+    MakeFlagRepoOpts,
+    'includeFrontend' | 'includeBackend' | 'frontendHits' | 'backendHits'
+  > = {},
+): Promise<void> {
+  const webPath = join(repo, WEB);
+  const apiPath = join(repo, API);
   const frontendHits = opts.frontendHits ?? ([1, 1, 1, 1, 1, 0] as const);
   const backendHits = opts.backendHits ?? ([1, 1, 1, 1, 1, 1] as const);
 
@@ -114,7 +130,4 @@ export async function makeFlagRepo(opts: MakeFlagRepoOpts = {}): Promise<{
 
   await mkdir(dirname(join(repo, 'coverage/coverage-final.json')), { recursive: true });
   await writeFile(join(repo, 'coverage/coverage-final.json'), JSON.stringify(cov));
-  await writeFile(join(repo, '.tested.yaml'), opts.yaml ?? FLAG_YAML);
-
-  return { repo, webPath, apiPath };
 }

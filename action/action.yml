@@ -110,8 +110,9 @@ inputs:
   flag:
     description: >-
       Optional flag name when this job is already scoped to one package.
-      The coverage file is that flag. A flag with no files this run is
-      missing (pending/fail) — no carryforward.
+      The coverage file is that flag. Other packages are omitted from
+      this upload (not sent as 0%). A configured flag with no files this
+      run is skipped, not a 0% result.
     required: false
     default: ''
   node-version:

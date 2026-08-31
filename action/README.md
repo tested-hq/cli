@@ -58,7 +58,7 @@ jobs:
 | `complete` | _(empty)_ | `true` concludes the gate (finish job / last part). `false` uploads a shard only — GitHub checks must not complete. Empty infers from `parts`/`part`. |
 | `run-id` | _(empty)_ | Groups shards for one CI run + SHA. Defaults to `github.run_id` when `parts` is set. |
 | `shard` | _(empty)_ | Optional shard label (e.g. matrix job name). |
-| `flag` | _(empty)_ | Optional flag name when this job is already scoped to one package. The coverage file is that flag. Missing flags this run stay pending/fail — no carryforward. |
+| `flag` | _(empty)_ | Optional flag name when this job is already scoped to one package. The coverage file is that flag. Other packages are omitted from this upload (not 0%). A flag with no files this run is skipped, not a 0% result. |
 | `node-version` | `24` | `actions/setup-node` version |
 
 ## One job, many coverage files
@@ -156,7 +156,7 @@ Until tested-hq/app stores shards and merges on `complete: true`, use the artifa
 
 ## Flags (per package)
 
-`.tested.yaml` `flags` add per-package floors on `tested check` (global + each flag whose paths appear this run). No carryforward: a flag with no files this run is missing.
+`.tested.yaml` `flags` add per-package floors on `tested check` (global + each flag whose paths appear this run). A flag with no files this run is skipped (not 0%).
 
 A frontend-only job can tag the coverage file as that flag:
 
@@ -167,7 +167,7 @@ A frontend-only job can tag the coverage file as that flag:
     flag: frontend
 ```
 
-`tested push` sends the same `flags` map as `tested check --json` so the app can post `tested.dev / patch / frontend` (and project) checks. Missing flags stay missing — no carryforward.
+`tested push` sends flags that had coverage files this run so the app can post `tested.dev / patch / frontend` (and project) checks. Skipped flags are omitted from ingest (not sent as `executable: 0`). A `--flag` scoped job is a real partial upload.
 
 ## Local path (monorepo / dogfood)
 

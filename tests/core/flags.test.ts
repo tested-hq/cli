@@ -3,6 +3,7 @@ import {
   evaluateFlags,
   filterFilesByFlag,
   flagsPass,
+  flagsToIngestJson,
   flagsToJson,
   MISSING_FLAG_REASON,
   pathMatchesFlag,
@@ -113,16 +114,15 @@ describe('evaluateFlags', () => {
     expect(frontend?.status).toBe('missing');
     expect(frontend?.present).toBe(false);
     expect(frontend?.reason).toBe(MISSING_FLAG_REASON);
-    expect(frontend?.patch.executable).toBe(0);
-    expect(frontend?.patch.covered).toBe(0);
-    expect(frontend?.patch.pct).toBe(0);
-    expect(frontend?.project.executable).toBe(0);
-    expect(frontend?.patch.pass).toBe(false);
+    expect(frontend?.patch.skipped).toBe(true);
+    expect(frontend?.patch.executable).toBeUndefined();
+    expect(frontend?.patch.pct).toBeUndefined();
+    expect(frontend?.patch.pass).toBeUndefined();
+    expect(frontend?.project.skipped).toBe(true);
+    expect(frontend?.project.executable).toBeUndefined();
     expect(backend?.status).toBe('pass');
     expect(backend?.patch.executable).toBe(5);
-    expect(frontend?.project.executable).not.toBe(backend?.project.executable);
-    expect(frontend?.project.pct).not.toBe(backend?.project.pct);
-    expect(flagsPass(results)).toBe(false);
+    expect(flagsPass(results)).toBe(true);
   });
 
   it('scopes --flag to that coverage file and omits the other package', () => {
@@ -163,5 +163,46 @@ describe('flagsToJson', () => {
     expect(json.frontend?.patchCheck).toBe('tested.dev / patch / frontend');
     expect(json.frontend?.patch.pct).toBe(80);
     expect(json.backend?.status).toBe('pass');
+  });
+
+  it('marks a missing flag skipped without 0% numbers', () => {
+    const results = evaluateFlags({
+      config: config(),
+      files: [api],
+      addedByFile: addedBoth(),
+    });
+    const json = flagsToJson(results);
+    expect(() => FlagsJsonMapSchema.parse(json)).not.toThrow();
+    expect(json.frontend).toMatchObject({
+      status: 'missing',
+      present: false,
+      skipped: true,
+      reason: MISSING_FLAG_REASON,
+    });
+    expect(json.frontend?.patch).toEqual({
+      threshold: 90,
+      skipped: true,
+      reason: MISSING_FLAG_REASON,
+    });
+    expect(json.frontend?.patch.executable).toBeUndefined();
+    expect(json.frontend?.patch.pct).toBeUndefined();
+    expect(json.backend?.status).toBe('pass');
+    expect(json.backend?.patch.executable).toBe(5);
+  });
+});
+
+describe('flagsToIngestJson', () => {
+  it('omits missing flags so ingest does not send executable 0', () => {
+    const results = evaluateFlags({
+      config: config(),
+      files: [api],
+      addedByFile: addedBoth(),
+    });
+    const ingest = flagsToIngestJson(results);
+    expect(ingest).toBeDefined();
+    expect(Object.keys(ingest ?? {})).toEqual(['backend']);
+    expect(ingest?.frontend).toBeUndefined();
+    expect(ingest?.backend?.status).toBe('pass');
+    expect(ingest?.backend?.patch.executable).toBeGreaterThan(0);
   });
 });

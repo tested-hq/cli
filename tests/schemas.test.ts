@@ -120,4 +120,22 @@ describe('FlagsJsonMapSchema', () => {
     });
     expect(parsed.frontend?.patchCheck).toBe('tested.dev / patch / frontend');
   });
+
+  it('accepts a skipped flag without executable/pct (not a 0% run)', () => {
+    const parsed = FlagsJsonMapSchema.parse({
+      backend: {
+        status: 'missing',
+        present: false,
+        skipped: true,
+        reason: 'no coverage files matched this flag in this run',
+        patchCheck: 'tested.dev / patch / backend',
+        projectCheck: 'tested.dev / project / backend',
+        patch: { threshold: 80, skipped: true, reason: 'no coverage files matched this flag in this run' },
+        project: { threshold: 50, skipped: true, reason: 'no coverage files matched this flag in this run' },
+      },
+    });
+    expect(parsed.backend?.skipped).toBe(true);
+    expect(parsed.backend?.patch.executable).toBeUndefined();
+    expect(parsed.backend?.patch.pct).toBeUndefined();
+  });
 });
