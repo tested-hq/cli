@@ -3,6 +3,23 @@ import { COVERAGE_FORMATS } from './core/coverage.js';
 
 export const CoverageFormatSchema = z.enum(COVERAGE_FORMATS);
 
+/** GitHub-check-safe flag id (`tested.dev / patch / frontend`). */
+export const FLAG_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+
+export const FlagNameSchema = z
+  .string()
+  .regex(FLAG_NAME_PATTERN, 'flag names must be alphanumeric plus _ . -');
+
+export const FlagThresholdsSchema = z.object({
+  patch: z.number().min(0).max(100).optional(),
+  project: z.number().min(0).max(100).optional(),
+});
+
+export const FlagConfigSchema = z.object({
+  paths: z.array(z.string().min(1)).min(1),
+  thresholds: FlagThresholdsSchema.optional(),
+});
+
 export const TestedConfigSchema = z.object({
   ignores: z.array(z.string()).default([]),
   coverage: z
@@ -23,18 +40,24 @@ export const TestedConfigSchema = z.object({
   testRunner: z.enum(['vitest', 'jest', 'pytest']).nullable().default(null),
   // Patch / project coverage gates. `tested init` writes these so users can
   // tune what counts as "passing" — schema MUST accept them so loadConfig
-  // doesn't silently drop the field. Enforcement in `diff` lands in a
-  // follow-up; today we just round-trip the values cleanly.
+  // doesn't silently drop the field.
   thresholds: z
     .object({
       patch: z.number().min(0).max(100),
       project: z.number().min(0).max(100),
     })
     .optional(),
+  /**
+   * Per-package gates. Each flag is graded from this run's coverage files
+   * only — a missing path is missing (pending/fail), never last week's totals.
+   */
+  flags: z.record(FlagNameSchema, FlagConfigSchema).optional(),
 });
 
 export type TestedConfig = z.infer<typeof TestedConfigSchema>;
 export type CoverageFormat = z.infer<typeof CoverageFormatSchema>;
+export type FlagConfig = z.infer<typeof FlagConfigSchema>;
+export type FlagThresholds = z.infer<typeof FlagThresholdsSchema>;
 
 export const UncoveredRangeSchema = z.object({
   start: z.number().int().positive(),

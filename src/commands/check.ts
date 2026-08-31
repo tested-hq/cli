@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
-import { computeDiff } from '../core/computeDiff.js';
+import { computeDiffContext } from '../core/computeDiff.js';
 import {
   formatIncompleteGateMessage,
   resolveCoverageMerge,
@@ -13,6 +13,12 @@ import {
   existingCoveragePaths,
   resolveCoveragePaths,
 } from '../core/coverage-paths.js';
+import {
+  evaluateFlags,
+  flagsPass,
+  type FlagCheckResult,
+} from '../core/flags.js';
+import type { FileCoverage } from '../core/istanbul.js';
 import { EMPTY_PATCH_REASON, isEmptyPatch } from '../core/patch.js';
 import type { DiffOutput, TestedConfig } from '../schemas.js';
 import { badge, dim, heading, tip, formatCliError } from '../output/ui.js';
@@ -21,6 +27,10 @@ export interface CheckInput {
   config: TestedConfig;
   diff: DiffOutput;
   json: boolean;
+  files?: readonly FileCoverage[];
+  addedByFile?: ReadonlyMap<string, ReadonlySet<number>>;
+  /** Action `flag` / `--flag`: this coverage file is the named flag. */
+  onlyFlag?: string;
 }
 
 export interface CheckResult {
@@ -29,6 +39,7 @@ export interface CheckResult {
   patchPass: boolean;
   projectPass: boolean;
   overall: 'pass' | 'fail';
+  flagResults: FlagCheckResult[];
   /** Content the CLI should write to stdout (with trailing newline). */
   stdout: string;
   /** Content the CLI should write to stderr (with trailing newline). */
@@ -45,6 +56,7 @@ export function formatIncompleteCheck(state: CoverageMergeState, json: boolean):
       patchPass: true,
       projectPass: true,
       overall: 'pass',
+      flagResults: [],
       stdout:
         JSON.stringify({
           overall: 'pending',
@@ -62,6 +74,7 @@ export function formatIncompleteCheck(state: CoverageMergeState, json: boolean):
     patchPass: true,
     projectPass: true,
     overall: 'pass',
+    flagResults: [],
     stdout: '',
     stderr:
       `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
@@ -82,6 +95,7 @@ export function formatCompleteHandshakeCheck(json: boolean): CheckResult {
       patchPass: true,
       projectPass: true,
       overall: 'pass',
+      flagResults: [],
       stdout: JSON.stringify({ overall: 'pending', complete: true, note }) + '\n',
       stderr: '',
       exitCode: 0,
@@ -92,6 +106,7 @@ export function formatCompleteHandshakeCheck(json: boolean): CheckResult {
     patchPass: true,
     projectPass: true,
     overall: 'pass',
+    flagResults: [],
     stdout: '',
     stderr:
       `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
@@ -106,10 +121,11 @@ function formatMetricLine(
   pct: number,
   threshold: number,
   pass: boolean,
+  indent = '  ',
 ): string {
   const pctStr = pct.toFixed(1);
   const status = pass ? badge('pass') : badge('fail');
-  return `  ${label.padEnd(8)}  ${pctStr}%  (threshold ${threshold})  ${status}`;
+  return `${indent}${label.padEnd(8)}  ${pctStr}%  (threshold ${threshold})  ${status}`;
 }
 
 /**
@@ -118,6 +134,55 @@ function formatMetricLine(
  *
  * Kept free of process.* / fs / network so it's trivially unit-testable.
  */
+function flagsToJson(results: readonly FlagCheckResult[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const flag of results) {
+    out[flag.name] = {
+      status: flag.status,
+      present: flag.present,
+      ...(flag.reason ? { reason: flag.reason } : {}),
+      patchCheck: flag.patchCheck,
+      projectCheck: flag.projectCheck,
+      patch: flag.patch,
+      project: flag.project,
+    };
+  }
+  return out;
+}
+
+function formatFlagLines(results: readonly FlagCheckResult[]): string[] {
+  if (results.length === 0) return [];
+  const lines: string[] = [''];
+  for (const flag of results) {
+    if (flag.status === 'missing') {
+      lines.push(
+        `  ${flag.name}  ${dim(flag.reason ?? 'missing this run')}  ${badge('missing')}`,
+      );
+      continue;
+    }
+    lines.push(`  ${flag.name}  ${flag.status === 'pass' ? badge('pass') : badge('fail')}`);
+    if (flag.patch.skipped) {
+      lines.push(
+        `    ${'Patch'.padEnd(8)}  ${dim('-')}  ${EMPTY_PATCH_REASON}  ${badge('skip')}`,
+      );
+    } else {
+      lines.push(
+        formatMetricLine('Patch', flag.patch.pct, flag.patch.threshold, flag.patch.pass, '    '),
+      );
+    }
+    lines.push(
+      formatMetricLine(
+        'Project',
+        flag.project.pct,
+        flag.project.threshold,
+        flag.project.pass,
+        '    ',
+      ),
+    );
+  }
+  return lines;
+}
+
 export function runCheck(input: CheckInput): CheckResult {
   const { config, diff, json } = input;
 
@@ -127,6 +192,7 @@ export function runCheck(input: CheckInput): CheckResult {
       patchPass: true,
       projectPass: true,
       overall: 'pass',
+      flagResults: [],
       stdout: '',
       stderr:
         `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
@@ -147,7 +213,16 @@ export function runCheck(input: CheckInput): CheckResult {
   const patchSkipped = isEmptyPatch(diff.patch);
   const patchPass = patchSkipped ? true : patchPct >= patchThreshold;
   const projectPass = projectPct >= projectThreshold;
-  const overall: 'pass' | 'fail' = patchPass && projectPass ? 'pass' : 'fail';
+
+  const flagResults = evaluateFlags({
+    config,
+    files: input.files ?? [],
+    addedByFile: input.addedByFile ?? new Map(),
+    ...(input.onlyFlag !== undefined ? { onlyFlag: input.onlyFlag } : {}),
+  });
+  const flagsOk = flagsPass(flagResults);
+  const overall: 'pass' | 'fail' =
+    patchPass && projectPass && flagsOk ? 'pass' : 'fail';
   const exitCode: 0 | 1 = overall === 'pass' ? 0 : 1;
 
   if (json) {
@@ -161,6 +236,7 @@ export function runCheck(input: CheckInput): CheckResult {
           : {}),
       },
       project: { pct: projectPct, threshold: projectThreshold, pass: projectPass },
+      ...(flagResults.length > 0 ? { flags: flagsToJson(flagResults) } : {}),
       overall,
       ...(patchSkipped ? { note: EMPTY_PATCH_REASON } : {}),
     };
@@ -169,6 +245,7 @@ export function runCheck(input: CheckInput): CheckResult {
       patchPass,
       projectPass,
       overall,
+      flagResults,
       stdout: JSON.stringify(payload) + '\n',
       stderr: '',
       exitCode,
@@ -189,10 +266,19 @@ export function runCheck(input: CheckInput): CheckResult {
     lines.push(formatMetricLine('Patch', patchPct, patchThreshold, patchPass));
   }
   lines.push(formatMetricLine('Project', projectPct, projectThreshold, projectPass));
+  lines.push(...formatFlagLines(flagResults));
   if (overall === 'fail') {
     lines.push('');
     if (patchSkipped) {
       lines.push(dim('No executable lines in the patch — patch gate skipped.'));
+    }
+    const missing = flagResults.filter((f) => f.status === 'missing');
+    if (missing.length > 0) {
+      lines.push(
+        dim(
+          "Missing flags fail this run (no carryforward). Collect that package's coverage or scope the job with --flag.",
+        ),
+      );
     }
     lines.push(tip('add tests for uncovered ranges: tested diff'));
   } else {
@@ -212,6 +298,7 @@ export function runCheck(input: CheckInput): CheckResult {
     patchPass,
     projectPass,
     overall,
+    flagResults,
     stdout: lines.join('\n'),
     stderr: '',
     exitCode,
@@ -222,6 +309,7 @@ export interface CheckCliOpts extends CoverageMergeCli {
   json: boolean;
   base?: string;
   file?: string[];
+  flag?: string;
 }
 
 export function registerCheckCommand(program: Command): void {
@@ -242,6 +330,10 @@ export function registerCheckCommand(program: Command): void {
     .option('--incomplete', 'Do not evaluate the gate (shard 1 of N)', false)
     .option('--parts <n>', 'Total shard count (gate waits until last part / --complete)')
     .option('--part <n>', '1-based shard index')
+    .option(
+      '--flag <name>',
+      'Evaluate only this flag (job already scoped — the coverage file is the flag)',
+    )
     .action(async (opts: CheckCliOpts) => {
       try {
         const cwd = process.cwd();
@@ -306,13 +398,20 @@ export function registerCheckCommand(program: Command): void {
           return;
         }
 
-        const diff = await computeDiff({
+        const { diff, files, addedByFile } = await computeDiffContext({
           cwd,
           config,
           ...(opts.base !== undefined ? { baseRef: opts.base } : {}),
           ...(coveragePaths.length > 0 ? { coveragePaths } : {}),
         });
-        const result = runCheck({ config, diff, json: opts.json });
+        const result = runCheck({
+          config,
+          diff,
+          json: opts.json,
+          files,
+          addedByFile,
+          ...(opts.flag && opts.flag.trim() ? { onlyFlag: opts.flag.trim() } : {}),
+        });
         if (result.stderr) process.stderr.write(result.stderr);
         if (result.stdout) process.stdout.write(result.stdout);
         // NB: use exitCode (not process.exit) so buffered stdout fully flushes.

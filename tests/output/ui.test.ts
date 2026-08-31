@@ -22,6 +22,7 @@ describe('ui helpers', () => {
     expect(badge('warn')).toContain('[WARN]');
     expect(badge('info')).toContain('[INFO]');
     expect(badge('skip')).toContain('[SKIP]');
+    expect(badge('missing')).toContain('[MISSING]');
   });
 
   it('metricBar fills proportionally with ASCII glyphs', () => {

@@ -130,6 +130,26 @@ No executable lines in the patch — patch gate skipped. Project threshold met.
 
 If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice on stderr and exits 0 — configs that haven't opted in stay green.
 
+### Flags (per package)
+
+Independent floors so a monorepo total cannot hide one package. Each flag is graded from **this run's** coverage files — no carryforward.
+
+```yaml
+flags:
+  frontend:
+    paths: ["apps/web/**", "packages/ui/**"]
+    thresholds:
+      patch: 90   # inherits project from thresholds.project
+  backend:
+    paths: ["apps/api/**"]
+```
+
+`tested check` applies global `thresholds` plus each flag whose paths appear in the merged coverage. Per-flag patch is new executable lines in those paths. A flag with no files this run is **missing** (fail / pending) — never last week's numbers.
+
+A job already scoped to one package: `tested check --flag frontend` (Action `flag:`). That coverage file **is** the flag.
+
+`--json` lists per-flag results (`flags.frontend.patchCheck` → `tested.dev / patch / frontend`) so the app can post those GitHub checks later.
+
 ## Coverage formats
 
 `tested diff` / `tested check` / `tested push` all read the same internal model (file path + statement hits). Parsers normalize these artifacts into that model:
@@ -189,6 +209,8 @@ For programmatic consumers:
 $ tested check --json
 {"patch":{"pct":87.3,"threshold":80,"pass":true},"project":{"pct":92.1,"threshold":90,"pass":true},"overall":"pass"}
 ```
+
+When `flags` are configured, the same object includes a `flags` map (status, patch/project totals, and `tested.dev / patch / <name>` slugs).
 
 `--json` suppresses the human layout; the exit code is unchanged.
 

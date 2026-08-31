@@ -59,6 +59,32 @@ describe('TestedConfigSchema', () => {
     expect(() => TestedConfigSchema.parse({ thresholds: { patch: 101, project: 60 } })).toThrow();
     expect(() => TestedConfigSchema.parse({ thresholds: { patch: 80, project: -1 } })).toThrow();
   });
+
+  it('round-trips flags with path globs and optional per-flag floors', () => {
+    const parsed = TestedConfigSchema.parse({
+      thresholds: { patch: 80, project: 60 },
+      flags: {
+        frontend: {
+          paths: ['apps/web/**', 'packages/ui/**'],
+          thresholds: { patch: 90 },
+        },
+        backend: { paths: ['apps/api/**'] },
+      },
+    });
+    expect(parsed.flags?.frontend?.paths).toEqual(['apps/web/**', 'packages/ui/**']);
+    expect(parsed.flags?.frontend?.thresholds).toEqual({ patch: 90 });
+    expect(parsed.flags?.backend?.paths).toEqual(['apps/api/**']);
+    expect(parsed.flags?.backend?.thresholds).toBeUndefined();
+  });
+
+  it('rejects empty flag paths and unsafe flag names', () => {
+    expect(() =>
+      TestedConfigSchema.parse({ flags: { frontend: { paths: [] } } }),
+    ).toThrow();
+    expect(() =>
+      TestedConfigSchema.parse({ flags: { 'front end': { paths: ['apps/web/**'] } } }),
+    ).toThrow();
+  });
 });
 
 describe('DiffOutputSchema', () => {

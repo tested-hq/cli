@@ -54,6 +54,8 @@ describe('action.yml check wiring', () => {
     expect(yml).toMatch(/files:/);
     expect(yml).toMatch(/parts:/);
     expect(yml).toMatch(/complete:/);
+    expect(yml).toContain('INPUT_FLAG: ${{ inputs.flag }}');
+    expect(yml).toMatch(/flag:/);
     expect(yml).not.toContain('tested check --base "$BASE"\n');
   });
 });
@@ -89,6 +91,18 @@ describe('run-check.sh', () => {
       const result = runCheck({ INPUT_COMPLETE: 'false' }, bin);
       expect(result.status).toBe(0);
       expect(readFileSync(log, 'utf8')).toContain('--incomplete');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('passes --flag when the job is scoped to one package', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tested-run-check-'));
+    try {
+      const { bin, log } = mockTested(dir);
+      const result = runCheck({ INPUT_FLAG: 'frontend' }, bin);
+      expect(result.status).toBe(0);
+      expect(readFileSync(log, 'utf8')).toContain('--flag frontend');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

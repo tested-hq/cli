@@ -12,6 +12,7 @@
 #   INPUT_COMPLETE     true | false | empty (infer from parts/part)
 #   INPUT_RUN_ID       optional run id (default github.run_id when parts set)
 #   INPUT_SHARD        optional shard label
+#   INPUT_FLAG         optional flag name (coverage file is that flag)
 #   ACTION_PATH        github.action_path (resolve-check-base.sh)
 #   EVENT_NAME, PR_BASE_SHA, PR_BASE_REF, GITHUB_BASE_REF,
 #   PUSH_BEFORE, DEFAULT_BRANCH
@@ -23,6 +24,7 @@ unset TESTED_PARTS
 unset TESTED_PART
 unset TESTED_RUN_ID
 unset TESTED_SHARD
+unset TESTED_FLAG
 
 if [ -z "${ACTION_PATH:-}" ]; then
   echo "error: ACTION_PATH is required to resolve the git base" >&2
@@ -65,5 +67,10 @@ if [ -n "${INPUT_SHARD:-}" ]; then
   export TESTED_SHARD="$INPUT_SHARD"
 fi
 
+EXTRA_FLAG=()
+if [ -n "${INPUT_FLAG:-}" ]; then
+  EXTRA_FLAG+=(--flag "$INPUT_FLAG")
+fi
+
 echo "tested check --base $BASE"
-tested check --base "$BASE" "${EXTRA_FILES[@]}" "${EXTRA_MERGE[@]}"
+tested check --base "$BASE" "${EXTRA_FILES[@]}" "${EXTRA_MERGE[@]}" "${EXTRA_FLAG[@]}"

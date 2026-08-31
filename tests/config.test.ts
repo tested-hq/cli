@@ -36,6 +36,14 @@ describe('loadConfig', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('loads flags from .tested.yaml', async () => {
+    const cfg = await loadConfig({ cwd: join(here, 'fixtures/flags') });
+    expect(cfg.flags?.frontend?.paths).toEqual(['apps/web/**', 'packages/ui/**']);
+    expect(cfg.flags?.frontend?.thresholds).toEqual({ patch: 90 });
+    expect(cfg.flags?.backend?.paths).toEqual(['apps/api/**']);
+    expect(cfg.thresholds).toEqual({ patch: 80, project: 60 });
+  });
+
   it('rethrows non-ENOENT errors when reading .tested.yaml', async () => {
     const { mkdtempSync, mkdirSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
