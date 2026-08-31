@@ -60,6 +60,7 @@ describe('package honesty', () => {
   const actionReadme = readFileSync(join(root, 'action/README.md'), 'utf8');
   const gettingStarted = readFileSync(join(root, 'docs/GETTING-STARTED.md'), 'utf8');
   const actionYml = readFileSync(join(root, 'action/action.yml'), 'utf8');
+  const runCheckSh = readFileSync(join(root, 'action/run-check.sh'), 'utf8');
   const runPushSh = readFileSync(join(root, 'action/run-push.sh'), 'utf8');
   const ciYml = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
 
@@ -92,8 +93,10 @@ describe('package honesty', () => {
   it('defaults the Action version input to this package version', () => {
     expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.8'/);
     expect(actionYml).toContain('install-cli.sh');
+    expect(actionYml).toContain('run-check.sh');
     expect(actionYml).toContain('run-push.sh');
-    expect(actionYml).toMatch(/tested check --base/);
+    expect(runCheckSh).toMatch(/tested check --base/);
+    expect(runCheckSh).toContain('resolve-check-base.sh');
     expect(runPushSh).toMatch(/tested push --pr "\$PR" --base "\$BASE"/);
     expect(runPushSh).toMatch(/tested push --mainline --base "\$BASE"/);
     expect(actionYml).not.toMatch(/node "\$BIN" check/);

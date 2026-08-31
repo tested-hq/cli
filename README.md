@@ -151,6 +151,17 @@ coverage:
   format: lcov   # optional — auto-detected from lcov.info
 ```
 
+Multiple files in one job are merged (union of paths, **max** hits — not averaged, not last-file-wins):
+
+```yaml
+coverage:
+  path:
+    - coverage/lcov.info
+    - coverage/python.xml
+```
+
+Or pass `--file` repeatedly / Action `files`. A CI matrix must not conclude the gate on shard 1 of N: `tested push --parts N --part 1` sends `coverageMerge.complete: false`; only `--complete` or the last part posts checks. See the Action README on GitHub (`tested-hq/cli/action`).
+
 `ignores` globs apply after parse, same as before.
 
 **pytest-cov:** emit lcov or Cobertura XML (`--cov-report=lcov` / `--cov-report=xml`). coverage.py JSON is not ingested.
@@ -204,6 +215,9 @@ $ tested push
 | `--base` | Git base for the coverage diff (same as `tested diff --base`) |
 | `--junit` / `TESTED_JUNIT` | JUnit XML for flakes / suite time (or auto-detect `junit.xml`, `test-results/junit.xml`, `coverage/junit.xml`) |
 | `--run-url` | Optional CI run URL |
+| `--file` | Coverage file to merge (repeatable) |
+| `--parts` / `--part` / `--complete` / `--incomplete` | Matrix shard handshake (`coverageMerge`) |
+| `--run-id` / `--shard` | Group shards for one CI run + SHA |
 | `--json` | Machine output: `{ "shareUrl", "expiresAt?" }` |
 
 ### `tested run` extra args

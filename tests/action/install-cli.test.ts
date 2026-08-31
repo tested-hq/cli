@@ -203,9 +203,9 @@ describe('action.yml install wiring', () => {
     expect(yml).toContain('INPUT_API_URL: ${{ inputs.api-url }}');
     expect(yml).toContain('install-cli.sh');
     expect(yml).toContain('inputs.cli-path');
-    expect(yml).toContain('resolve-check-base.sh');
+    expect(yml).toContain('run-check.sh');
     expect(yml).toContain('run-push.sh');
-    expect(yml).toMatch(/tested check --base/);
+    expect(yml).toMatch(/run-check\.sh/);
     expect(yml).not.toMatch(/node "\$BIN"/);
     expect(yml).not.toMatch(/corepack enable/);
     expect(yml).not.toMatch(/git clone/);

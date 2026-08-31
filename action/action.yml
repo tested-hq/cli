@@ -71,6 +71,42 @@ inputs:
       reports/junit.xml under the working directory. Sets TESTED_JUNIT.
     required: false
     default: ''
+  files:
+    description: >-
+      Coverage files to merge locally before check/push (newline or
+      comma-separated). Overrides coverage.path. Use for one job with
+      many artifacts (e.g. coverage/lcov.info + coverage/python.xml).
+    required: false
+    default: ''
+  parts:
+    description: >-
+      Total shard count for a matrix (Codecov after_n_builds / Qlty
+      total-parts-count). Push is incomplete until complete=true or
+      part equals parts. Missing shards fail or stay pending — no
+      carryforward.
+    required: false
+    default: ''
+  part:
+    description: '1-based shard index. When equal to parts, this upload concludes the gate.'
+    required: false
+    default: ''
+  complete:
+    description: >-
+      true concludes the gate (finish job / last part). false uploads a
+      shard only — GitHub checks must not complete. Empty infers from
+      parts/part.
+    required: false
+    default: ''
+  run-id:
+    description: >-
+      Groups shards for one CI run + SHA. Defaults to github.run_id when
+      parts is set.
+    required: false
+    default: ''
+  shard:
+    description: 'Optional shard label (e.g. matrix job name).'
+    required: false
+    default: ''
   node-version:
     description: 'Node.js version for the CLI (setup-node).'
     required: false
@@ -101,20 +137,20 @@ runs:
       env:
         TESTED_SAFE_RUN: '1'
         INPUT_BASE: ${{ inputs.base }}
+        INPUT_FILES: ${{ inputs.files }}
+        INPUT_PARTS: ${{ inputs.parts }}
+        INPUT_PART: ${{ inputs.part }}
+        INPUT_COMPLETE: ${{ inputs.complete }}
+        INPUT_RUN_ID: ${{ inputs.run-id }}
+        INPUT_SHARD: ${{ inputs.shard }}
+        ACTION_PATH: ${{ github.action_path }}
         EVENT_NAME: ${{ github.event_name }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         GITHUB_BASE_REF: ${{ github.base_ref }}
         PUSH_BEFORE: ${{ github.event.before }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      run: |
-        set -euo pipefail
-        if [ -z "${PR_BASE_REF:-}" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
-          PR_BASE_REF="$GITHUB_BASE_REF"
-        fi
-        BASE="$(bash "${{ github.action_path }}/resolve-check-base.sh")"
-        echo "tested check --base $BASE"
-        tested check --base "$BASE"
+      run: bash "${{ github.action_path }}/run-check.sh"
 
     - name: tested push (optional)
       if: inputs.push == 'true'
@@ -126,6 +162,12 @@ runs:
         INPUT_API_URL: ${{ inputs.api-url }}
         INPUT_PR_NUMBER: ${{ inputs.pr-number }}
         INPUT_JUNIT: ${{ inputs.junit }}
+        INPUT_FILES: ${{ inputs.files }}
+        INPUT_PARTS: ${{ inputs.parts }}
+        INPUT_PART: ${{ inputs.part }}
+        INPUT_COMPLETE: ${{ inputs.complete }}
+        INPUT_RUN_ID: ${{ inputs.run-id }}
+        INPUT_SHARD: ${{ inputs.shard }}
         INPUT_MAINLINE: ${{ inputs.mainline }}
         INPUT_REPOSITORY: ${{ github.repository }}
         INPUT_BASE: ${{ inputs.base }}

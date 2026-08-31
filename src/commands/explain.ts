@@ -3,9 +3,9 @@ import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { openRepo } from '../git.js';
-import { parseCoverage } from '../core/coverage.js';
 import type { FileCoverage } from '../core/istanbul.js';
 import { assertWithinRoot } from '../core/assert-within-root.js';
+import { parseAndMergeCoverage, resolveCoveragePaths } from '../core/coverage-paths.js';
 import { badge, dim, heading } from '../output/ui.js';
 
 export interface ExplainResult {
@@ -91,10 +91,9 @@ export function registerExplainCommand(program: Command): void {
         const { path: relPath, line } = parseLocation(location);
         const config = await loadConfig({ cwd });
         const ctx = await openRepo(cwd);
-        const coveragePath = resolve(cwd, config.coverage.path);
-        assertWithinRoot(ctx.repoRoot, coveragePath);
-        const files = await parseCoverage({
-          path: coveragePath,
+        const files = await parseAndMergeCoverage({
+          paths: resolveCoveragePaths({ configPath: config.coverage.path }),
+          cwd,
           repoRoot: ctx.repoRoot,
           ...(config.coverage.format ? { format: config.coverage.format } : {}),
         });

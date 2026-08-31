@@ -9,7 +9,14 @@ export const TestedConfigSchema = z.object({
     .object({
       /** Omit to auto-detect from path and file contents. */
       format: CoverageFormatSchema.optional(),
-      path: z.string().default('coverage/coverage-final.json'),
+      /**
+       * One file or a list of files to merge (union of paths, max hits).
+       * A CI matrix that uploads many files in one job should list them here
+       * or pass `--file` / Action `files`.
+       */
+      path: z
+        .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+        .default('coverage/coverage-final.json'),
     })
     .prefault({}),
   base: z.string().default('origin/main'),

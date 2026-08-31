@@ -1,6 +1,18 @@
+import { existsSync } from 'node:fs';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff } from '../core/computeDiff.js';
+import {
+  formatIncompleteGateMessage,
+  resolveCoverageMerge,
+  type CoverageMergeCli,
+  type CoverageMergeState,
+} from '../core/coverage-merge.js';
+import {
+  collectCoverageFile,
+  existingCoveragePaths,
+  resolveCoveragePaths,
+} from '../core/coverage-paths.js';
 import { EMPTY_PATCH_REASON, isEmptyPatch } from '../core/patch.js';
 import type { DiffOutput, TestedConfig } from '../schemas.js';
 import { badge, dim, heading, tip, formatCliError } from '../output/ui.js';
@@ -23,6 +35,70 @@ export interface CheckResult {
   stderr: string;
   /** Process exit code (0 = pass / skipped, 1 = fail). */
   exitCode: 0 | 1;
+}
+
+export function formatIncompleteCheck(state: CoverageMergeState, json: boolean): CheckResult {
+  const message = formatIncompleteGateMessage(state);
+  if (json) {
+    return {
+      skipped: true,
+      patchPass: true,
+      projectPass: true,
+      overall: 'pass',
+      stdout:
+        JSON.stringify({
+          overall: 'pending',
+          complete: false,
+          ...(state.part !== undefined ? { part: state.part } : {}),
+          ...(state.totalParts !== undefined ? { totalParts: state.totalParts } : {}),
+          note: message,
+        }) + '\n',
+      stderr: '',
+      exitCode: 0,
+    };
+  }
+  return {
+    skipped: true,
+    patchPass: true,
+    projectPass: true,
+    overall: 'pass',
+    stdout: '',
+    stderr:
+      `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
+      `\n` +
+      `${dim(`  ${message}`)}\n` +
+      `${tip('tested push --complete  (or --parts N --part N)')}\n`,
+    exitCode: 0,
+  };
+}
+
+export function formatCompleteHandshakeCheck(json: boolean): CheckResult {
+  const note =
+    'no local coverage files — complete handshake only. ' +
+    'The app merges stored shards; this job does not evaluate the gate.';
+  if (json) {
+    return {
+      skipped: true,
+      patchPass: true,
+      projectPass: true,
+      overall: 'pass',
+      stdout: JSON.stringify({ overall: 'pending', complete: true, note }) + '\n',
+      stderr: '',
+      exitCode: 0,
+    };
+  }
+  return {
+    skipped: true,
+    patchPass: true,
+    projectPass: true,
+    overall: 'pass',
+    stdout: '',
+    stderr:
+      `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
+      `\n` +
+      `${dim(`  ${note}`)}\n`,
+    exitCode: 0,
+  };
 }
 
 function formatMetricLine(
@@ -142,6 +218,12 @@ export function runCheck(input: CheckInput): CheckResult {
   };
 }
 
+export interface CheckCliOpts extends CoverageMergeCli {
+  json: boolean;
+  base?: string;
+  file?: string[];
+}
+
 export function registerCheckCommand(program: Command): void {
   program
     .command('check')
@@ -150,10 +232,56 @@ export function registerCheckCommand(program: Command): void {
     )
     .option('--json', 'Emit machine-readable JSON to stdout (exit code unchanged).', false)
     .option('--base <ref>', 'Git base ref to diff against', undefined)
-    .action(async (opts: { json: boolean; base?: string }) => {
+    .option(
+      '--file <path>',
+      'Coverage file to merge (repeatable). Overrides coverage.path.',
+      collectCoverageFile,
+      [],
+    )
+    .option('--complete', 'Conclude the gate (last shard / finish job)', false)
+    .option('--incomplete', 'Do not evaluate the gate (shard 1 of N)', false)
+    .option('--parts <n>', 'Total shard count (gate waits until last part / --complete)')
+    .option('--part <n>', '1-based shard index')
+    .action(async (opts: CheckCliOpts) => {
       try {
         const cwd = process.cwd();
         const config = await loadConfig({ cwd });
+
+        let merge: CoverageMergeState;
+        try {
+          merge = resolveCoverageMerge(opts);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          process.stderr.write(formatCliError(message));
+          process.exitCode = 1;
+          return;
+        }
+
+        // Incomplete shards must not post a passing (or failing) local gate.
+        if (!merge.complete) {
+          const result = formatIncompleteCheck(merge, opts.json);
+          if (result.stderr) process.stderr.write(result.stderr);
+          if (result.stdout) process.stdout.write(result.stdout);
+          process.exitCode = result.exitCode;
+          return;
+        }
+
+        const coveragePaths = resolveCoveragePaths({
+          ...(opts.file && opts.file.length > 0 ? { files: opts.file } : {}),
+          configPath: config.coverage.path,
+        });
+        const existing = existingCoveragePaths(coveragePaths, cwd, existsSync);
+        const handshakeOnly =
+          merge.complete &&
+          existing.length === 0 &&
+          (opts.complete || merge.totalParts !== undefined);
+        if (handshakeOnly) {
+          const result = formatCompleteHandshakeCheck(opts.json);
+          if (result.stderr) process.stderr.write(result.stderr);
+          if (result.stdout) process.stdout.write(result.stdout);
+          process.exitCode = result.exitCode;
+          return;
+        }
 
         // Short-circuit before we spend time on git/coverage parsing when there's
         // nothing to enforce.
@@ -182,6 +310,7 @@ export function registerCheckCommand(program: Command): void {
           cwd,
           config,
           ...(opts.base !== undefined ? { baseRef: opts.base } : {}),
+          ...(coveragePaths.length > 0 ? { coveragePaths } : {}),
         });
         const result = runCheck({ config, diff, json: opts.json });
         if (result.stderr) process.stderr.write(result.stderr);
