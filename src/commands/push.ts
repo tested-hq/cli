@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff, computeDiffContext } from '../core/computeDiff.js';
-import { resolveFlagsJson } from '../core/flags.js';
+import { resolveIngestFlagsJson } from '../core/flags.js';
 import {
   formatIncompleteGateMessage,
   hasShardMetadata,
@@ -133,9 +133,10 @@ export interface IngestBody {
    */
   coverageMerge?: CoverageMergePayload;
   /**
-   * Per-package results. Same map as `tested check --json` (`flagsToJson`).
-   * Omitted when no flags are configured or on a coverage-less handshake.
-   * Missing flags stay missing — no carryforward.
+   * Per-package results for flags that had coverage files this run.
+   * Same shape as `tested check --json` (`flagsToJson`), but skipped flags
+   * (no matching files) are omitted so ingest can keep last success.
+   * A real 0% run still sends `present: true` with executable/covered.
    */
   flags?: FlagsJsonMap;
 }
@@ -1102,7 +1103,7 @@ export async function executePush(
   // Injected computeDiffFn has no file list — do not invent missing flags.
   if (!handshakeOnly && !computeDiffFn) {
     try {
-      flags = resolveFlagsJson({
+      flags = resolveIngestFlagsJson({
         config,
         files,
         addedByFile,

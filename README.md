@@ -132,7 +132,7 @@ If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice o
 
 ### Flags (per package)
 
-Independent floors so a monorepo total cannot hide one package. Each flag is graded from **this run's** coverage files — no carryforward.
+Independent floors so a monorepo total cannot hide one package. Each flag is graded from **this run's** coverage files.
 
 ```yaml
 flags:
@@ -144,11 +144,11 @@ flags:
     paths: ["apps/api/**"]
 ```
 
-`tested check` applies global `thresholds` plus each flag whose paths appear in the merged coverage. Per-flag patch is new executable lines in those paths. A flag with no files this run is **missing** (fail / pending) — never last week's numbers.
+`tested check` applies global `thresholds` plus each flag whose paths appear in the merged coverage. Per-flag patch is new executable lines in those paths. A flag with no files this run is **skipped** (not 0%) — an affected-graph or scoped job that did not collect that package is not a fail.
 
-A job already scoped to one package: `tested check --flag frontend` (Action `flag:`). That coverage file **is** the flag.
+A job already scoped to one package: `tested check --flag frontend` (Action `flag:`). That coverage file **is** the flag. Other packages are omitted from this upload.
 
-`--json` lists per-flag results (`flags.frontend.patchCheck` → `tested.dev / patch / frontend`). `tested push` sends that same `flags` map on ingest so the app can post those GitHub checks. `tested diff --json` includes it too.
+`--json` lists per-flag results (`flags.frontend.patchCheck` → `tested.dev / patch / frontend`). Skipped flags have `status: missing` and `skipped: true` with no `executable` / `pct`. `tested push` omits skipped flags from ingest so the last successful upload for that package still stands. `tested diff --json` includes the same map as check.
 
 ## Coverage formats
 

@@ -83,7 +83,7 @@ describe('runCheck — flags vs global floor', () => {
     );
   });
 
-  it('missing frontend does not silently pass using backend totals', () => {
+  it('missing frontend is skipped, not a 0% fail copied from backend', () => {
     const result = runCheck({
       config: makeConfig(),
       diff: {
@@ -101,23 +101,25 @@ describe('runCheck — flags vs global floor', () => {
         frontend: {
           status: string;
           present: boolean;
-          patch: { executable: number; pct: number; pass: boolean };
-          project: { executable: number; pct: number };
+          skipped?: boolean;
+          patch: { executable?: number; pct?: number; pass?: boolean; skipped?: boolean };
+          project: { executable?: number; pct?: number; skipped?: boolean };
         };
         backend: { status: string; patch: { executable: number; pct: number } };
       };
     };
     expect(parsed.flags.frontend.status).toBe('missing');
     expect(parsed.flags.frontend.present).toBe(false);
-    expect(parsed.flags.frontend.patch.pass).toBe(false);
-    expect(parsed.flags.frontend.patch.executable).toBe(0);
-    expect(parsed.flags.frontend.patch.pct).toBe(0);
-    expect(parsed.flags.frontend.project.executable).toBe(0);
+    expect(parsed.flags.frontend.skipped).toBe(true);
+    expect(parsed.flags.frontend.patch.skipped).toBe(true);
+    expect(parsed.flags.frontend.patch.pass).toBeUndefined();
+    expect(parsed.flags.frontend.patch.executable).toBeUndefined();
+    expect(parsed.flags.frontend.patch.pct).toBeUndefined();
+    expect(parsed.flags.frontend.project.executable).toBeUndefined();
     expect(parsed.flags.backend.status).toBe('pass');
     expect(parsed.flags.backend.patch.executable).toBe(5);
-    expect(parsed.flags.frontend.project.pct).not.toBe(parsed.flags.backend.patch.pct);
-    expect(parsed.overall).toBe('fail');
-    expect(result.exitCode).toBe(1);
+    expect(parsed.overall).toBe('pass');
+    expect(result.exitCode).toBe(0);
   });
 });
 
@@ -169,24 +171,42 @@ describe('tested check — two-package fixture', () => {
     expect(result.stdout).toContain('threshold 90');
   });
 
-  it('missing frontend is not a silent pass copied from backend', async () => {
+  it('missing frontend is skipped, not a 0% fail copied from backend', async () => {
     const result = await invokeCli(['check', '--base', 'main', '--json'], {
       cwd: backendOnly,
     });
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(0);
     const parsed = JSON.parse(result.stdout) as {
+      overall: string;
       flags: {
-        frontend: { status: string; patch: { executable: number; pct: number; pass: boolean } };
+        frontend: {
+          status: string;
+          skipped?: boolean;
+          patch: { executable?: number; pct?: number; pass?: boolean; skipped?: boolean };
+        };
         backend: { status: string; patch: { executable: number; pct: number } };
       };
     };
+    expect(parsed.overall).toBe('pass');
     expect(parsed.flags.frontend.status).toBe('missing');
-    expect(parsed.flags.frontend.patch.executable).toBe(0);
-    expect(parsed.flags.frontend.patch.pct).toBe(0);
-    expect(parsed.flags.frontend.patch.pass).toBe(false);
+    expect(parsed.flags.frontend.skipped).toBe(true);
+    expect(parsed.flags.frontend.patch.skipped).toBe(true);
+    expect(parsed.flags.frontend.patch.executable).toBeUndefined();
+    expect(parsed.flags.frontend.patch.pct).toBeUndefined();
+    expect(parsed.flags.frontend.patch.pass).toBeUndefined();
     expect(parsed.flags.backend.status).toBe('pass');
     expect(parsed.flags.backend.patch.executable).toBeGreaterThan(0);
-    expect(parsed.flags.frontend.patch.executable).not.toBe(parsed.flags.backend.patch.executable);
+  });
+
+  it('human output marks a missing flag without 0%', async () => {
+    const result = await invokeCli(['check', '--base', 'main'], { cwd: backendOnly });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('frontend');
+    expect(result.stdout).toContain('[MISSING]');
+    expect(result.stdout).toContain('backend');
+    expect(result.stdout).toContain('[PASS]');
+    expect(result.stdout).not.toMatch(/frontend[\s\S]{0,80}0\.0%/);
+    expect(result.stdout).not.toContain('no carryforward');
   });
 
   it('scopes --flag backend so a backend-only upload can pass', async () => {

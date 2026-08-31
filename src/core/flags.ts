@@ -1,5 +1,5 @@
 import { minimatch } from 'minimatch';
-import type { FlagConfig, FlagsJsonMap, TestedConfig } from '../schemas.js';
+import type { FlagConfig, FlagMetricJson, FlagsJsonMap, TestedConfig } from '../schemas.js';
 import type { FileCoverage } from './istanbul.js';
 import {
   computePatchCoverage,
@@ -17,11 +17,13 @@ export const SCOPED_MISSING_FLAG_REASON = 'no coverage files in this run for thi
 export type FlagStatus = 'pass' | 'fail' | 'missing';
 
 export interface FlagMetricResult {
-  pct: number;
+  /** Omitted when this flag had no files this run (`skipped: true`). */
+  pct?: number;
   threshold: number;
-  pass: boolean;
-  executable: number;
-  covered: number;
+  /** Omitted when skipped — a missing flag is not a 0% fail. */
+  pass?: boolean;
+  executable?: number;
+  covered?: number;
   skipped?: true;
   reason?: string;
 }
@@ -110,13 +112,11 @@ function totalsToMetric(
   };
 }
 
-function missingMetric(threshold: number): FlagMetricResult {
+function missingMetric(threshold: number, reason: string): FlagMetricResult {
   return {
-    pct: 0,
     threshold,
-    pass: false,
-    executable: 0,
-    covered: 0,
+    skipped: true,
+    reason,
   };
 }
 
@@ -158,8 +158,8 @@ function missingFlag(
     reason,
     patchCheck: checkSlug('patch', name),
     projectCheck: checkSlug('project', name),
-    patch: missingMetric(thresholds.patch),
-    project: missingMetric(thresholds.project),
+    patch: missingMetric(thresholds.patch, reason),
+    project: missingMetric(thresholds.project, reason),
   };
 }
 
@@ -167,7 +167,7 @@ function missingFlag(
  * Grade each in-scope flag from this run's coverage files.
  *
  * No `--flag`: every configured flag. Paths that do not appear are `missing`
- * (own zeros — never another flag's totals).
+ * (skipped — not a 0% run, never another flag's totals).
  *
  * `--flag name`: the coverage file is that flag (job already scoped). Other
  * flags are not in this run and are omitted.
@@ -203,13 +203,15 @@ export function evaluateFlags(input: EvaluateFlagsInput): FlagCheckResult[] {
   return results;
 }
 
+/** Present flags must pass. Missing/skipped flags do not fail the gate. */
 export function flagsPass(results: readonly FlagCheckResult[]): boolean {
-  return results.every((f) => f.status === 'pass');
+  return results.every((f) => f.status !== 'fail');
 }
 
 /**
- * Same object `tested check --json` puts on `flags`. Ingest and
- * `tested diff --json` must reuse this — do not invent a second schema.
+ * Check / diff `--json` map. Missing flags stay in the map as
+ * `status: missing` + `skipped: true` (no executable/pct). Ingest uses
+ * `flagsToIngestJson` and omits those keys.
  */
 export function flagsToJson(results: readonly FlagCheckResult[]): FlagsJsonMap {
   const out: FlagsJsonMap = {};
@@ -217,18 +219,52 @@ export function flagsToJson(results: readonly FlagCheckResult[]): FlagsJsonMap {
     out[flag.name] = {
       status: flag.status,
       present: flag.present,
+      ...(flag.status === 'missing' ? { skipped: true as const } : {}),
       ...(flag.reason ? { reason: flag.reason } : {}),
       patchCheck: flag.patchCheck,
       projectCheck: flag.projectCheck,
-      patch: flag.patch,
-      project: flag.project,
+      patch: metricToJson(flag.patch),
+      project: metricToJson(flag.project),
     };
   }
   return out;
 }
 
-/** Grade flags for ingest / agent JSON. `undefined` when none are configured. */
+function metricToJson(metric: FlagMetricResult): FlagMetricJson {
+  if (metric.skipped) {
+    return {
+      threshold: metric.threshold,
+      skipped: true,
+      ...(metric.reason ? { reason: metric.reason } : {}),
+    };
+  }
+  return {
+    pct: metric.pct ?? 0,
+    threshold: metric.threshold,
+    pass: metric.pass ?? false,
+    executable: metric.executable ?? 0,
+    covered: metric.covered ?? 0,
+    ...(metric.reason ? { reason: metric.reason } : {}),
+  };
+}
+
+/**
+ * Ingest map: omit flags that had no files this run.
+ * The app treats absence as "not in this upload" and keeps last success.
+ * Check/diff JSON still lists them as `status: missing` + `skipped: true`.
+ */
+export function flagsToIngestJson(results: readonly FlagCheckResult[]): FlagsJsonMap | undefined {
+  const present = results.filter((f) => f.present);
+  return present.length > 0 ? flagsToJson(present) : undefined;
+}
+
+/** Grade flags for check / diff JSON. `undefined` when none are configured. */
 export function resolveFlagsJson(input: EvaluateFlagsInput): FlagsJsonMap | undefined {
   const results = evaluateFlags(input);
   return results.length > 0 ? flagsToJson(results) : undefined;
+}
+
+/** Grade flags for ingest. Missing flags are omitted (not sent as 0%). */
+export function resolveIngestFlagsJson(input: EvaluateFlagsInput): FlagsJsonMap | undefined {
+  return flagsToIngestJson(evaluateFlags(input));
 }

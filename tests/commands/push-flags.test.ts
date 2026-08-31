@@ -118,22 +118,15 @@ describe('tested push — ingest flags (two-package fixture)', () => {
     expect(body.flags?.backend?.status).toBe('pass');
   });
 
-  it('sends frontend as missing with executable 0, not backend totals', async () => {
+  it('omits a missing frontend from ingest (not executable 0)', async () => {
     const { body, exitCode } = await pushFixture(backendOnly);
     expect(exitCode).toBe(0);
-    const frontend = body.flags?.frontend;
-    const backend = body.flags?.backend;
-    expect(frontend?.status).toBe('missing');
-    expect(frontend?.present).toBe(false);
-    expect(frontend?.patch.executable).toBe(0);
-    expect(frontend?.patch.covered).toBe(0);
-    expect(frontend?.patch.pct).toBe(0);
-    expect(frontend?.project.executable).toBe(0);
-    expect(frontend?.patch.pass).toBe(false);
-    expect(backend?.status).toBe('pass');
-    expect(backend?.patch.executable).toBeGreaterThan(0);
-    expect(frontend?.patch.executable).not.toBe(backend?.patch.executable);
-    expect(frontend?.project.pct).not.toBe(backend?.project.pct);
+    expect(body.flags?.frontend).toBeUndefined();
+    expect(Object.keys(body.flags ?? {})).toEqual(['backend']);
+    expect(body.flags?.backend?.status).toBe('pass');
+    expect(body.flags?.backend?.present).toBe(true);
+    expect(body.flags?.backend?.patch.executable).toBeGreaterThan(0);
+    expect(body.flags?.backend?.patch.pct).not.toBe(0);
   });
 
   it('scopes --flag backend so ingest omits frontend', async () => {
