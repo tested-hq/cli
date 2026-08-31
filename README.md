@@ -130,6 +130,35 @@ No executable lines in the patch — patch gate skipped. Project threshold met.
 
 If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice on stderr and exits 0 — configs that haven't opted in stay green.
 
+## Coverage formats
+
+`tested diff` / `tested check` / `tested push` all read the same internal model (file path + statement hits). Parsers normalize these artifacts into that model:
+
+| `coverage.format` | Typical path | Produced by |
+|---|---|---|
+| `istanbul-json` (or `v8-json`) | `coverage/coverage-final.json` | Vitest, Jest, nyc — V8 coverage emitted as Istanbul JSON |
+| `lcov` | `coverage/lcov.info`, `*.lcov` | lcov, vitest lcov reporter, pytest-cov `--cov-report=lcov` |
+| `cobertura` | `coverage/cobertura.xml`, `coverage.xml` | Cobertura, pytest-cov `--cov-report=xml` |
+| `jacoco` | `jacoco.xml` | JaCoCo (Maven / Gradle) |
+| `gcov` | `*.gcov` or a directory of them | GNU `gcov` **text** reports (not raw `.gcno` / `.gcda` notes) |
+| `simplecov` | `coverage/.resultset.json` | SimpleCov (Ruby) |
+
+When `coverage.format` is omitted, the CLI auto-detects from the filename and, if needed, the file contents. `coverage/coverage-final.json` is treated as Istanbul/V8 JSON (the default). Set format explicitly in `.tested.yaml` when you want to pin it:
+
+```yaml
+coverage:
+  path: coverage/lcov.info
+  format: lcov   # optional — auto-detected from lcov.info
+```
+
+`ignores` globs apply after parse, same as before.
+
+**pytest-cov:** emit lcov or Cobertura XML (`--cov-report=lcov` / `--cov-report=xml`). coverage.py JSON is not ingested.
+
+**gcov:** run `gcov` on your `.gcda` files in CI and point `coverage.path` at the resulting `.gcov` text (or the directory that contains them). Binary notes are not parsed.
+
+**SimpleCov:** the default `coverage/.resultset.json` (and the `simplecov-json` gem report) are accepted. Array index 0 is line 1; `null` is non-executable.
+
 ### GitHub Actions
 
 ```yaml

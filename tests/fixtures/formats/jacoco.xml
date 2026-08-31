@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<report name="demo">
+  <sessioninfo id="session" start="1710000000" dump="1710000001"/>
+  <package name="src">
+    <class name="src/Auth" sourcefilename="Auth.java"/>
+    <sourcefile name="Auth.java">
+      <line nr="1" mi="0" ci="3" mb="0" cb="0"/>
+      <line nr="5" mi="2" ci="0" mb="0" cb="0"/>
+      <line nr="9" mi="0" ci="2" mb="0" cb="0"/>
+      <line nr="10" mi="1" ci="0" mb="0" cb="0"/>
+      <counter type="LINE" missed="2" covered="2"/>
+      <counter type="INSTRUCTION" missed="3" covered="5"/>
+    </sourcefile>
+    <sourcefile name="Util.java">
+      <line nr="2" mi="0" ci="1" mb="0" cb="0"/>
+      <line nr="3" mi="0" ci="1" mb="0" cb="0"/>
+      <counter type="LINE" missed="0" covered="2"/>
+    </sourcefile>
+  </package>
+  <package name="src/migrations">
+    <sourcefile name="V001.java">
+      <line nr="1" mi="1" ci="0" mb="0" cb="0"/>
+    </sourcefile>
+  </package>
+</report>

@@ -8,7 +8,7 @@ import {
   type GitContext,
 } from '../git.js';
 import { assertSafeGitRef } from '../git-ref.js';
-import { parseIstanbul } from './istanbul.js';
+import { parseCoverage } from './coverage.js';
 import { parseUnifiedDiff } from './diff.js';
 import { splitByIgnore } from './ignores.js';
 import { assertWithinRoot } from './assert-within-root.js';
@@ -45,7 +45,11 @@ export async function computeDiff(opts: ComputeDiffOpts): Promise<DiffOutput> {
 
   const coveragePath = resolve(cwd, config.coverage.path);
   assertWithinRoot(ctx.repoRoot, coveragePath);
-  const allFiles = await parseIstanbul({ path: coveragePath, repoRoot: ctx.repoRoot });
+  const allFiles = await parseCoverage({
+    path: coveragePath,
+    repoRoot: ctx.repoRoot,
+    ...(config.coverage.format ? { format: config.coverage.format } : {}),
+  });
   const { kept, ignored } = splitByIgnore(
     allFiles.map((f) => f.path),
     config.ignores,
@@ -57,9 +61,10 @@ export async function computeDiff(opts: ComputeDiffOpts): Promise<DiffOutput> {
   if (opts.withBaseCoverage) {
     const baseCoveragePath = resolve(cwd, opts.withBaseCoverage);
     assertWithinRoot(ctx.repoRoot, baseCoveragePath);
-    const baseFiles = await parseIstanbul({
+    const baseFiles = await parseCoverage({
       path: baseCoveragePath,
       repoRoot: ctx.repoRoot,
+      ...(config.coverage.format ? { format: config.coverage.format } : {}),
     });
     const baseKept = baseFiles.filter((f) => !ignored.includes(f.path));
     const baseExec = baseKept.reduce((n, f) => n + f.statements.length, 0);
