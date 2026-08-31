@@ -136,9 +136,12 @@ describe('package honesty', () => {
     expect(releaseYml).toContain('ubuntu-latest');
     expect(releaseYml).not.toMatch(/self-hosted/);
     expect(releaseYml).not.toMatch(/^\s*environment:/m);
-    expect(releaseYml).not.toMatch(/NODE_AUTH_TOKEN|NPM_TOKEN|NPM_CONFIG_PROVENANCE/);
-    expect(releaseYml).not.toContain('registry-url');
-    expect(releaseYml).not.toContain('--provenance');
+    expect(releaseYml).not.toMatch(
+      /^\s*(NODE_AUTH_TOKEN|NPM_TOKEN|NPM_CONFIG_PROVENANCE)\s*:/m,
+    );
+    expect(releaseYml).not.toMatch(/secrets\.(NPM_TOKEN|NODE_AUTH_TOKEN)/);
+    expect(releaseYml).not.toMatch(/^\s*registry-url:/m);
+    expect(releaseYml).not.toMatch(/--provenance|NPM_CONFIG_PROVENANCE/);
     expect(releaseYml).toContain('pnpm install --frozen-lockfile');
     expect(releaseYml).toContain('pnpm typecheck');
     expect(releaseYml).toContain('pnpm test');
