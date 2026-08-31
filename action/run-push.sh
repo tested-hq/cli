@@ -18,6 +18,7 @@
 #   INPUT_COMPLETE     true | false | empty (infer from parts/part)
 #   INPUT_RUN_ID       optional run id
 #   INPUT_SHARD        optional shard label
+#   INPUT_FLAG         optional flag name (coverage file is that flag)
 #   ACTION_PATH        github.action_path (resolve-check-base.sh)
 #   EVENT_NAME         github.event_name
 #   EVENT_PR_NUMBER    github.event.pull_request.number
@@ -136,6 +137,11 @@ if [ -n "${INPUT_SHARD:-}" ]; then
   export TESTED_SHARD="$INPUT_SHARD"
 fi
 
+EXTRA_FLAG=()
+if [ -n "${INPUT_FLAG:-}" ]; then
+  EXTRA_FLAG+=(--flag "$INPUT_FLAG")
+fi
+
 EXTRA_REPO=()
 if [[ "${INPUT_REPOSITORY:-}" =~ $SAFE_REPO_RE ]]; then
   export GITHUB_REPOSITORY="$INPUT_REPOSITORY"
@@ -155,7 +161,7 @@ fi
 
 if [ "$MAINLINE" = "true" ]; then
   echo "tested push --mainline --base $BASE"
-  tested push --mainline --base "$BASE" "${EXTRA_REPO[@]}" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}" "${EXTRA_FILES[@]}" "${EXTRA_MERGE[@]}"
+  tested push --mainline --base "$BASE" "${EXTRA_REPO[@]}" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}" "${EXTRA_FILES[@]}" "${EXTRA_MERGE[@]}" "${EXTRA_FLAG[@]}"
   exit 0
 fi
 
@@ -166,4 +172,4 @@ if [ -z "$PR" ]; then
 fi
 
 echo "tested push --pr $PR --base $BASE"
-tested push --pr "$PR" --base "$BASE" "${EXTRA_REPO[@]}" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}" "${EXTRA_FILES[@]}" "${EXTRA_MERGE[@]}"
+tested push --pr "$PR" --base "$BASE" "${EXTRA_REPO[@]}" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}" "${EXTRA_FILES[@]}" "${EXTRA_MERGE[@]}" "${EXTRA_FLAG[@]}"

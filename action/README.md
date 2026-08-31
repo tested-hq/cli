@@ -167,7 +167,7 @@ A frontend-only job can tag the coverage file as that flag:
     flag: frontend
 ```
 
-App-posted GitHub checks (`tested.dev / patch / frontend`) are a follow-up on tested-hq/app. This Action runs the local gate and emits per-flag JSON from `tested check --json`.
+`tested push` sends the same `flags` map as `tested check --json` so the app can post `tested.dev / patch / frontend` (and project) checks. Missing flags stay missing — no carryforward.
 
 ## Local path (monorepo / dogfood)
 

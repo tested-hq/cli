@@ -98,6 +98,36 @@ export type DiffOutput = z.infer<typeof DiffOutputSchema>;
 export type FileCoverage = z.infer<typeof FileCoverageSchema>;
 export type UncoveredRange = z.infer<typeof UncoveredRangeSchema>;
 
+/**
+ * Per-flag JSON (`tested check --json`, `tested diff --json`, ingest `flags`).
+ * One schema — do not invent a second shape for push.
+ */
+export const FlagMetricJsonSchema = z.object({
+  pct: z.number().min(0).max(100),
+  threshold: z.number().min(0).max(100),
+  pass: z.boolean(),
+  executable: z.number().int().nonnegative(),
+  covered: z.number().int().nonnegative(),
+  skipped: z.literal(true).optional(),
+  reason: z.string().optional(),
+});
+
+export const FlagResultJsonSchema = z.object({
+  status: z.enum(['pass', 'fail', 'missing']),
+  present: z.boolean(),
+  reason: z.string().optional(),
+  patchCheck: z.string(),
+  projectCheck: z.string(),
+  patch: FlagMetricJsonSchema,
+  project: FlagMetricJsonSchema,
+});
+
+export const FlagsJsonMapSchema = z.record(FlagNameSchema, FlagResultJsonSchema);
+
+export type FlagMetricJson = z.infer<typeof FlagMetricJsonSchema>;
+export type FlagResultJson = z.infer<typeof FlagResultJsonSchema>;
+export type FlagsJsonMap = z.infer<typeof FlagsJsonMapSchema>;
+
 // Re-export test analytics schema (JUnit → optional ingest field)
 export {
   TestReportSchema,

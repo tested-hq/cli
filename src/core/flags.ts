@@ -1,5 +1,5 @@
 import { minimatch } from 'minimatch';
-import type { FlagConfig, TestedConfig } from '../schemas.js';
+import type { FlagConfig, FlagsJsonMap, TestedConfig } from '../schemas.js';
 import type { FileCoverage } from './istanbul.js';
 import {
   computePatchCoverage,
@@ -205,4 +205,30 @@ export function evaluateFlags(input: EvaluateFlagsInput): FlagCheckResult[] {
 
 export function flagsPass(results: readonly FlagCheckResult[]): boolean {
   return results.every((f) => f.status === 'pass');
+}
+
+/**
+ * Same object `tested check --json` puts on `flags`. Ingest and
+ * `tested diff --json` must reuse this — do not invent a second schema.
+ */
+export function flagsToJson(results: readonly FlagCheckResult[]): FlagsJsonMap {
+  const out: FlagsJsonMap = {};
+  for (const flag of results) {
+    out[flag.name] = {
+      status: flag.status,
+      present: flag.present,
+      ...(flag.reason ? { reason: flag.reason } : {}),
+      patchCheck: flag.patchCheck,
+      projectCheck: flag.projectCheck,
+      patch: flag.patch,
+      project: flag.project,
+    };
+  }
+  return out;
+}
+
+/** Grade flags for ingest / agent JSON. `undefined` when none are configured. */
+export function resolveFlagsJson(input: EvaluateFlagsInput): FlagsJsonMap | undefined {
+  const results = evaluateFlags(input);
+  return results.length > 0 ? flagsToJson(results) : undefined;
 }

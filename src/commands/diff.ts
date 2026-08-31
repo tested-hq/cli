@@ -1,7 +1,8 @@
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
-import { computeDiff } from '../core/computeDiff.js';
+import { computeDiffContext } from '../core/computeDiff.js';
 import { collectCoverageFile } from '../core/coverage-paths.js';
+import { resolveFlagsJson } from '../core/flags.js';
 import { formatHuman } from '../output/human.js';
 import { formatCliError } from '../output/ui.js';
 
@@ -22,7 +23,7 @@ export function registerDiffCommand(program: Command): void {
       try {
         const cwd = process.cwd();
         const config = await loadConfig({ cwd });
-        const output = await computeDiff({
+        const { diff, files, addedByFile } = await computeDiffContext({
           cwd,
           config,
           ...(opts.base !== undefined ? { baseRef: opts.base } : {}),
@@ -33,10 +34,12 @@ export function registerDiffCommand(program: Command): void {
         });
 
         if (opts.json) {
-          process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+          const flags = resolveFlagsJson({ config, files, addedByFile });
+          const payload = flags ? { ...diff, flags } : diff;
+          process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
         } else {
           process.stdout.write(
-            formatHuman(output, {
+            formatHuman(diff, {
               ...(config.thresholds ? { thresholds: config.thresholds } : {}),
               tips: true,
             }) + '\n',
