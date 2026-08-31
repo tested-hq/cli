@@ -113,15 +113,32 @@ describe('runtime e2e — from nothing: tested setup then tested check', () => {
     assertNoCoverageTool(repo, pkg);
 
     const setup = await invokeCli(['setup', '--json'], { cwd: repo });
-    expect(setup.exitCode).toBe(0);
     const setupJson = JSON.parse(setup.stdout) as {
       schemaVersion: number;
       initRan: boolean;
-      doctor: { ok: boolean; exitCode: number };
+      doctor: {
+        ok: boolean;
+        exitCode: number;
+        checks: { id: string; status: string; detail: string }[];
+      };
     };
     expect(setupJson.schemaVersion).toBe(1);
     expect(setupJson.initRan).toBe(true);
-    expect(setupJson.doctor.ok).toBe(true);
+    const nodeMajor = Number(process.version.replace(/^v/, '').split('.')[0]);
+    const nodeCheck = setupJson.doctor.checks.find((c) => c.id === 'node');
+    const hardFails = setupJson.doctor.checks.filter(
+      (c) => c.status === 'fail' && ['node', 'git', 'config', 'origin'].includes(c.id),
+    );
+    if (nodeMajor >= 24) {
+      expect(setup.exitCode, setup.stdout).toBe(0);
+      expect(setupJson.doctor.ok).toBe(true);
+      expect(nodeCheck?.status).toBe('pass');
+    } else {
+      // engines.node is >=24; doctor hard-fails below that. Setup still wrote
+      // .tested.yaml — the rest of this e2e is the check gate.
+      expect(hardFails.map((c) => c.id)).toEqual(['node']);
+      expect(nodeCheck?.status).toBe('fail');
+    }
     expect(existsSync(join(repo, '.tested.yaml'))).toBe(true);
     const yaml = await readFile(join(repo, '.tested.yaml'), 'utf8');
     expect(yaml).toMatch(/thresholds:\s*\n\s*patch:\s*80/);
