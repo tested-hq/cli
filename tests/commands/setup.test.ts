@@ -38,7 +38,7 @@ describe('buildCiSnippet / token / install', () => {
     const snip = buildCiSnippet();
     expect(snip).toContain('tested-hq/cli/action@main');
     expect(snip).toContain('secrets.TESTED_TOKEN');
-    expect(snip).toContain('version: 0.1.8');
+    expect(snip).toContain('version: 0.1.9');
     expect(snip).not.toContain('cli-ref');
     expect(snip).not.toContain('fetch-depth: 0');
   });

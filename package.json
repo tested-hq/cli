@@ -1,6 +1,6 @@
 {
   "name": "@tested/cli",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Coverage your agent can use. CLI for patch + project coverage with agent-readable JSON output.",
   "license": "MIT",
   "homepage": "https://tested.dev",

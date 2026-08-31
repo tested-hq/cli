@@ -23,7 +23,7 @@ jobs:
 
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.8
+          version: 0.1.9
 ```
 
 ## Gate + share URL
@@ -31,7 +31,7 @@ jobs:
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.8
+    version: 0.1.9
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
@@ -41,7 +41,7 @@ jobs:
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `version` | `0.1.8` | npm version of `@tested/cli` |
+| `version` | `0.1.9` | npm version of `@tested/cli` |
 | `cli-path` | _(empty)_ | Local checkout of `tested-hq/cli` (skips npm) |
 | `cli-repository` | `tested-hq/cli` | GitHub `owner/name` for the git fallback |
 | `cli-ref` | _(empty)_ | Optional git ref instead of npm |
@@ -68,7 +68,7 @@ Merge locally, then check and push **once**. Hits are maxed (not averaged); file
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.8
+    version: 0.1.9
     files: |
       coverage/lcov.info
       coverage/python.xml
@@ -113,7 +113,7 @@ jobs:
       - uses: actions/download-artifact@v4
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.8
+          version: 0.1.9
           files: |
             coverage-node/lcov.info
             coverage-python/python.xml
@@ -134,7 +134,7 @@ jobs:
       - run: # produce coverage
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.8
+          version: 0.1.9
           push: true
           parts: 3
           shard: node-${{ matrix.node }}
@@ -146,7 +146,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.8
+          version: 0.1.9
           push: true
           complete: true
           token: ${{ secrets.TESTED_TOKEN }}
@@ -163,7 +163,7 @@ A frontend-only job can tag the coverage file as that flag:
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.8
+    version: 0.1.9
     flag: frontend
 ```
 
