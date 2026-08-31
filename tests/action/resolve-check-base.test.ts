@@ -33,7 +33,7 @@ beforeAll(async () => {
 
   shallow = mkdtempSync(join(tmpdir(), 'tested-action-shallow-'));
   await simpleGit().clone(server, shallow, ['--depth', '1', '--branch', 'feature']);
-}, 20_000);
+}, 60_000);
 
 afterAll(() => {
   if (server) rmSync(server, { recursive: true, force: true });
@@ -59,12 +59,14 @@ function runResolve(
 describe('action.yml wiring', () => {
   it('defaults tested check --base from the PR SHA / previous push commit', () => {
     const yml = readFileSync(actionYml, 'utf8');
-    expect(yml).toContain('resolve-check-base.sh');
+    const checkSh = readFileSync(join(here, '../../action/run-check.sh'), 'utf8');
+    expect(yml).toContain('run-check.sh');
     expect(yml).toContain('github.event.pull_request.base.sha');
     expect(yml).toContain('github.event.pull_request.base.ref');
     expect(yml).toContain('github.event.before');
     expect(yml).toContain('github.base_ref');
-    expect(yml).toMatch(/tested check --base/);
+    expect(checkSh).toContain('resolve-check-base.sh');
+    expect(checkSh).toMatch(/tested check --base/);
     expect(yml).toContain('install-cli.sh');
     expect(yml).not.toMatch(/node "\$BIN" check/);
   });

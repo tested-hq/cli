@@ -8,11 +8,8 @@ import type { FileCoverage } from './coverage-model.js';
 
 /** Normalize `coverage.path` (string or list) to a non-empty path list. */
 export function coveragePathList(path: string | readonly string[]): string[] {
-  if (Array.isArray(path)) {
-    return path.map((p) => p.trim()).filter((p) => p.length > 0);
-  }
-  const single = path.trim();
-  return single ? [single] : [];
+  const list = Array.isArray(path) ? [...path] : [path];
+  return list.map((p) => p.trim()).filter((p) => p.length > 0);
 }
 
 /**

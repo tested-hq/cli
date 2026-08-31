@@ -160,7 +160,7 @@ coverage:
     - coverage/python.xml
 ```
 
-Or pass `--file` repeatedly / Action `files`. A CI matrix must not conclude the gate on shard 1 of N: `tested push --parts N --part 1` sends `coverageMerge.complete: false`; only `--complete` or the last part posts checks. See [action/README.md](action/README.md).
+Or pass `--file` repeatedly / Action `files`. A CI matrix must not conclude the gate on shard 1 of N: `tested push --parts N --part 1` sends `coverageMerge.complete: false`; only `--complete` or the last part posts checks. See the Action README on GitHub (`tested-hq/cli/action`).
 
 `ignores` globs apply after parse, same as before.
 

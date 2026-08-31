@@ -113,9 +113,10 @@ describe('tested push on a shallow PR checkout (no local main)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).not.toMatch(/git base ref "main" not found/i);
     expect(posted?.pr?.number).toBe(35);
-    expect(posted?.diff.head).toBe(headSha);
-    expect(posted?.diff.patch.executable).toBeGreaterThan(0);
-    const resolved = posted?.diff.base ?? '';
+    expect(posted?.diff).toBeDefined();
+    expect(posted!.diff!.head).toBe(headSha);
+    expect(posted!.diff!.patch.executable).toBeGreaterThan(0);
+    const resolved = posted!.diff!.base ?? '';
     expect(
       resolved === baseSha ||
         resolved === 'origin/main' ||
@@ -190,8 +191,9 @@ describe('tested push on a shallow PR checkout (no local main)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).not.toMatch(/unknown revision|ambiguous argument/i);
     expect(posted?.pr?.number).toBe(35);
-    expect(posted?.diff.base).toBe(baseSha);
-    expect(posted?.diff.head).toBe(headSha);
-    expect(posted?.diff.patch.executable).toBeGreaterThan(0);
+    expect(posted?.diff).toBeDefined();
+    expect(posted!.diff!.base).toBe(baseSha);
+    expect(posted!.diff!.head).toBe(headSha);
+    expect(posted!.diff!.patch.executable).toBeGreaterThan(0);
   });
 });
