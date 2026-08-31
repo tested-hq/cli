@@ -149,7 +149,7 @@ jobs:
       - run: pnpm test -- --coverage
       - uses: tested-hq/cli/action@main
         with:
-          version: 0.1.8
+          version: 0.1.9
           push: true
           pr-number: ${{ github.event.pull_request.number }}
           token: ${{ secrets.TESTED_TOKEN }}
