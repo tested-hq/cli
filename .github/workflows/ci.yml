@@ -79,3 +79,31 @@ jobs:
           junit: junit.xml
           pr-number: ${{ github.event.pull_request.number }}
           token: ${{ secrets.TESTED_TOKEN }}
+
+  # Pointer job for Clive → Margot: runtime setup/check + codecov teardown
+  # (not pack-contract greps). Same files also run in the test job above.
+  runtime-e2e:
+    name: runtime e2e (from-nothing setup/check + from-codecov teardown)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+          standalone: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: from-nothing setup/check + from-codecov teardown
+        run: >
+          pnpm exec vitest run
+          tests/integration/from-nothing-setup-check-e2e.test.ts
+          tests/integration/from-codecov-teardown-check-e2e.test.ts
