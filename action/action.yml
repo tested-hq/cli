@@ -107,6 +107,13 @@ inputs:
     description: 'Optional shard label (e.g. matrix job name).'
     required: false
     default: ''
+  flag:
+    description: >-
+      Optional flag name when this job is already scoped to one package.
+      The coverage file is that flag. A flag with no files this run is
+      missing (pending/fail) — no carryforward.
+    required: false
+    default: ''
   node-version:
     description: 'Node.js version for the CLI (setup-node).'
     required: false
@@ -143,6 +150,7 @@ runs:
         INPUT_COMPLETE: ${{ inputs.complete }}
         INPUT_RUN_ID: ${{ inputs.run-id }}
         INPUT_SHARD: ${{ inputs.shard }}
+        INPUT_FLAG: ${{ inputs.flag }}
         ACTION_PATH: ${{ github.action_path }}
         EVENT_NAME: ${{ github.event_name }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}

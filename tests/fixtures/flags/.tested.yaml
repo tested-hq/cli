@@ -1,0 +1,14 @@
+base: main
+thresholds:
+  patch: 80
+  project: 60
+flags:
+  frontend:
+    paths:
+      - apps/web/**
+      - packages/ui/**
+    thresholds:
+      patch: 90
+  backend:
+    paths:
+      - apps/api/**

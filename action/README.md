@@ -58,6 +58,7 @@ jobs:
 | `complete` | _(empty)_ | `true` concludes the gate (finish job / last part). `false` uploads a shard only — GitHub checks must not complete. Empty infers from `parts`/`part`. |
 | `run-id` | _(empty)_ | Groups shards for one CI run + SHA. Defaults to `github.run_id` when `parts` is set. |
 | `shard` | _(empty)_ | Optional shard label (e.g. matrix job name). |
+| `flag` | _(empty)_ | Optional flag name when this job is already scoped to one package. The coverage file is that flag. Missing flags this run stay pending/fail — no carryforward. |
 | `node-version` | `24` | `actions/setup-node` version |
 
 ## One job, many coverage files
@@ -152,6 +153,21 @@ jobs:
 ```
 
 Until tested-hq/app stores shards and merges on `complete: true`, use the artifact + local-merge finish job. Shard jobs still must pass `parts` / `complete: false` so they do not conclude GitHub checks.
+
+## Flags (per package)
+
+`.tested.yaml` `flags` add per-package floors on `tested check` (global + each flag whose paths appear this run). No carryforward: a flag with no files this run is missing.
+
+A frontend-only job can tag the coverage file as that flag:
+
+```yaml
+- uses: tested-hq/cli/action@main
+  with:
+    version: 0.1.8
+    flag: frontend
+```
+
+App-posted GitHub checks (`tested.dev / patch / frontend`) are a follow-up on tested-hq/app. This Action runs the local gate and emits per-flag JSON from `tested check --json`.
 
 ## Local path (monorepo / dogfood)
 

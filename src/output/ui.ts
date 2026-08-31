@@ -1,7 +1,7 @@
 import pc from 'picocolors';
 import { tokenMintGuidance } from '../token-help.js';
 
-export type BadgeKind = 'pass' | 'fail' | 'warn' | 'info' | 'skip';
+export type BadgeKind = 'pass' | 'fail' | 'warn' | 'info' | 'skip' | 'missing';
 
 /**
  * Whether ANSI color is enabled (respects NO_COLOR / non-TTY via picocolors).
@@ -24,6 +24,8 @@ export function badge(kind: BadgeKind): string {
       return pc.cyan('[INFO]');
     case 'skip':
       return pc.cyan('[SKIP]');
+    case 'missing':
+      return pc.yellow('[MISSING]');
   }
 }
 

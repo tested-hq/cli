@@ -13,7 +13,14 @@ import { parseUnifiedDiff } from './diff.js';
 import { splitByIgnore } from './ignores.js';
 import { assertWithinRoot } from './assert-within-root.js';
 import { parseAndMergeCoverage, resolveCoveragePaths } from './coverage-paths.js';
+import type { FileCoverage } from './istanbul.js';
 import { buildDiffOutput } from '../output/json.js';
+
+export interface DiffContext {
+  diff: DiffOutput;
+  files: FileCoverage[];
+  addedByFile: ReadonlyMap<string, ReadonlySet<number>>;
+}
 
 export interface ComputeDiffOpts {
   cwd: string;
@@ -40,7 +47,7 @@ export interface ComputeDiffOpts {
  * Extracted so `tested check` can consume the same logic without re-parsing
  * stdout. Keep this pure-ish: no process.exit, no stdout writes.
  */
-export async function computeDiff(opts: ComputeDiffOpts): Promise<DiffOutput> {
+export async function computeDiffContext(opts: ComputeDiffOpts): Promise<DiffContext> {
   const { cwd, config } = opts;
   const ctx = opts.ctx ?? (await openRepo(cwd));
   const requested = assertSafeGitRef(opts.baseRef ?? config.base);
@@ -93,7 +100,7 @@ export async function computeDiff(opts: ComputeDiffOpts): Promise<DiffOutput> {
     projectDelta = Math.round((headPct - basePct) * 10) / 10;
   }
 
-  return buildDiffOutput({
+  const diff = buildDiffOutput({
     base: baseRef,
     head,
     files,
@@ -101,4 +108,10 @@ export async function computeDiff(opts: ComputeDiffOpts): Promise<DiffOutput> {
     ignored,
     projectDelta,
   });
+  return { diff, files, addedByFile };
+}
+
+export async function computeDiff(opts: ComputeDiffOpts): Promise<DiffOutput> {
+  const { diff } = await computeDiffContext(opts);
+  return diff;
 }
