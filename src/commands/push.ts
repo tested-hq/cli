@@ -4,6 +4,20 @@ import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff } from '../core/computeDiff.js';
 import {
+  formatIncompleteGateMessage,
+  hasShardMetadata,
+  resolveCoverageMerge,
+  toCoverageMergePayload,
+  type CoverageMergeCli,
+  type CoverageMergePayload,
+  type CoverageMergeState,
+} from '../core/coverage-merge.js';
+import {
+  collectCoverageFile,
+  existingCoveragePaths,
+  resolveCoveragePaths,
+} from '../core/coverage-paths.js';
+import {
   openRepo,
   headSha,
   remoteUrl,
@@ -58,7 +72,7 @@ export function parseGitHubRepository(
   return { owner, name };
 }
 
-export interface PushCliOpts {
+export interface PushCliOpts extends CoverageMergeCli {
   token?: string;
   url?: string;
   owner?: string;
@@ -75,6 +89,8 @@ export interface PushCliOpts {
   mainline?: boolean;
   /** Path to JUnit XML for test analytics (flakes / slowest). */
   junit?: string;
+  /** Coverage files to merge (repeatable `--file`). */
+  file?: string[];
 }
 
 export interface IngestRepo {
@@ -97,12 +113,21 @@ export interface IngestBody {
   repo: IngestRepo;
   pr?: IngestPr;
   runUrl: string | null;
-  diff: DiffOutput;
+  /**
+   * Patch/project report. Omitted on a `--complete` handshake that has no
+   * local coverage (finish job). App merges stored shards in that case.
+   */
+  diff?: DiffOutput;
   ref?: string;
   isDefaultBranch?: boolean;
   headSha?: string;
   /** Optional JUnit-derived analytics (schemaVersion 1). */
   testReport?: TestReport;
+  /**
+   * Shard handshake. App must NOT post GitHub checks / PR comment / gate
+   * when `complete` is false. See `src/core/coverage-merge.ts`.
+   */
+  coverageMerge?: CoverageMergePayload;
 }
 
 export interface IngestSuccess {
@@ -111,6 +136,7 @@ export interface IngestSuccess {
   mainline?: boolean;
   date?: string;
   projectPct?: number;
+  complete?: boolean;
 }
 
 export interface PushResult {
@@ -119,6 +145,8 @@ export interface PushResult {
   stderr: string;
   shareUrl?: string;
   expiresAt?: string;
+  /** False when this upload must not conclude GitHub checks. */
+  complete?: boolean;
 }
 
 /** Module-level guard so the --token argv warning prints at most once. */
@@ -562,8 +590,9 @@ export function buildIngestBody(input: {
   headRef: string;
   headSha: string;
   runUrl: string | null;
-  diff: DiffOutput;
+  diff?: DiffOutput;
   testReport?: TestReport;
+  coverageMerge?: CoverageMergePayload;
 }): IngestBody {
   const baseRefName = toBranchName(input.baseRef);
   return {
@@ -582,8 +611,9 @@ export function buildIngestBody(input: {
       state: 'open',
     },
     runUrl: input.runUrl,
-    diff: input.diff,
+    ...(input.diff ? { diff: input.diff } : {}),
     ...(input.testReport ? { testReport: input.testReport } : {}),
+    ...(input.coverageMerge ? { coverageMerge: input.coverageMerge } : {}),
   };
 }
 
@@ -595,8 +625,9 @@ export function buildMainlineIngestBody(input: {
   headSha: string;
   ref: string;
   runUrl: string | null;
-  diff: DiffOutput;
+  diff?: DiffOutput;
   testReport?: TestReport;
+  coverageMerge?: CoverageMergePayload;
 }): IngestBody {
   return {
     repo: {
@@ -605,11 +636,12 @@ export function buildMainlineIngestBody(input: {
       defaultBranch: input.defaultBranch,
     },
     runUrl: input.runUrl,
-    diff: input.diff,
+    ...(input.diff ? { diff: input.diff } : {}),
     ref: input.ref,
     isDefaultBranch: true,
     headSha: input.headSha,
     ...(input.testReport ? { testReport: input.testReport } : {}),
+    ...(input.coverageMerge ? { coverageMerge: input.coverageMerge } : {}),
   };
 }
 
@@ -712,15 +744,13 @@ export async function postIngest(opts: {
     }
   }
 
-  if (res.status === 200) {
-    const data = parsed as Partial<IngestSuccess> | null;
-    if (!data) {
-      return {
-        ok: false,
-        status: res.status,
-        message: 'ingest succeeded but response was empty',
-      };
-    }
+  const concludesGate = opts.body.coverageMerge?.complete !== false;
+  const handshakeOnly = concludesGate && !opts.body.diff;
+  const acceptIncomplete = opts.body.coverageMerge?.complete === false;
+  const successStatus = res.status === 200 || (acceptIncomplete && res.status === 202);
+
+  if (successStatus) {
+    const data = (parsed as Partial<IngestSuccess> | null) ?? {};
     if (data.mainline === true) {
       return {
         ok: true,
@@ -729,10 +759,20 @@ export async function postIngest(opts: {
           mainline: true,
           ...(typeof data.date === 'string' ? { date: data.date } : {}),
           ...(typeof data.projectPct === 'number' ? { projectPct: data.projectPct } : {}),
+          ...(acceptIncomplete ? { complete: false } : {}),
         },
       };
     }
-    if (typeof data.shareUrl !== 'string' || !data.shareUrl) {
+    const shareUrl =
+      typeof data.shareUrl === 'string' && data.shareUrl ? data.shareUrl : undefined;
+    if (concludesGate && !handshakeOnly && !acceptIncomplete && !shareUrl) {
+      if (parsed === null) {
+        return {
+          ok: false,
+          status: res.status,
+          message: 'ingest succeeded but response was empty',
+        };
+      }
       return {
         ok: false,
         status: res.status,
@@ -743,8 +783,9 @@ export async function postIngest(opts: {
       ok: true,
       status: res.status,
       data: {
-        shareUrl: data.shareUrl,
+        ...(shareUrl ? { shareUrl } : {}),
         ...(typeof data.expiresAt === 'string' ? { expiresAt: data.expiresAt } : {}),
+        ...(acceptIncomplete || handshakeOnly ? { complete: concludesGate } : {}),
       },
     };
   }
@@ -766,7 +807,9 @@ export async function postIngest(opts: {
 export function formatPushSuccess(
   data: IngestSuccess,
   json: boolean,
+  merge?: CoverageMergeState,
 ): { stdout: string; stderr: string } {
+  const incomplete = merge ? !merge.complete : data.complete === false;
   if (json) {
     const payload: Record<string, string | number | boolean> = {};
     if (data.shareUrl) payload.shareUrl = data.shareUrl;
@@ -774,9 +817,23 @@ export function formatPushSuccess(
     if (data.mainline) payload.mainline = true;
     if (data.date) payload.date = data.date;
     if (typeof data.projectPct === 'number') payload.projectPct = data.projectPct;
+    if (merge && hasShardMetadata(merge)) {
+      payload.complete = merge.complete;
+      if (merge.part !== undefined) payload.part = merge.part;
+      if (merge.totalParts !== undefined) payload.totalParts = merge.totalParts;
+    } else if (incomplete) {
+      payload.complete = false;
+    }
     return { stdout: JSON.stringify(payload) + '\n', stderr: '' };
   }
   const lines: string[] = [];
+  if (incomplete && merge) {
+    lines.push(successLine(`uploaded shard (${formatIncompleteGateMessage(merge)})`));
+    if (data.shareUrl) {
+      lines.push(dim(`  ${shareUrl(data.shareUrl)}  (pending — not a gate result)`));
+    }
+    return { stdout: lines.join('\n') + '\n', stderr: '' };
+  }
   if (data.mainline) {
     lines.push(
       successLine(
@@ -952,6 +1009,15 @@ export async function executePush(
     const message = err instanceof Error ? err.message : String(err);
     return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
   }
+  let merge: CoverageMergeState;
+  try {
+    merge = resolveCoverageMerge(cli, env);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
+  }
+  const coverageMerge = toCoverageMergePayload(merge);
+
   const config: TestedConfig = await loadConfigFn({ cwd: deps.cwd });
   const ctx = await openRepoFn(deps.cwd);
   const peeked = await peekRepoIdentity({
@@ -961,32 +1027,48 @@ export async function executePush(
     ctx,
   });
 
-  let diff: DiffOutput;
-  try {
-    let baseOverride = cli.base;
-    if (baseOverride === undefined && prNumber !== null) {
-      const resolved = await resolvePrPushBase({
+  const coveragePaths = resolveCoveragePaths({
+    ...(cli.file && cli.file.length > 0 ? { files: cli.file } : {}),
+    env,
+    configPath: config.coverage.path,
+  });
+  const existingCoverage = existingCoveragePaths(coveragePaths, deps.cwd);
+  const handshakeOnly =
+    merge.complete &&
+    existingCoverage.length === 0 &&
+    (cli.complete === true || merge.totalParts !== undefined);
+
+  let diff: DiffOutput | undefined;
+  if (!handshakeOnly) {
+    try {
+      let baseOverride = cli.base;
+      if (baseOverride === undefined && prNumber !== null) {
+        const resolved = await resolvePrPushBase({
+          ctx,
+          requested: config.base,
+          prNumber,
+          ...(peeked.owner != null ? { owner: peeked.owner } : {}),
+          ...(peeked.name != null ? { name: peeked.name } : {}),
+          fetchFn,
+          env,
+          onProgress,
+        });
+        if (resolved !== undefined) baseOverride = resolved;
+      }
+      onProgress('computing diff…');
+      diff = await computeDiffFn({
+        cwd: deps.cwd,
+        config,
+        ...(baseOverride !== undefined ? { baseRef: baseOverride } : {}),
         ctx,
-        requested: config.base,
-        prNumber,
-        ...(peeked.owner != null ? { owner: peeked.owner } : {}),
-        ...(peeked.name != null ? { name: peeked.name } : {}),
-        fetchFn,
-        env,
-        onProgress,
+        ...(coveragePaths.length > 0 ? { coveragePaths } : {}),
       });
-      if (resolved !== undefined) baseOverride = resolved;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
     }
-    onProgress('computing diff…');
-    diff = await computeDiffFn({
-      cwd: deps.cwd,
-      config,
-      ...(baseOverride !== undefined ? { baseRef: baseOverride } : {}),
-      ctx,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
+  } else {
+    onProgress('complete handshake (no local coverage)…');
   }
 
   let owner = cli.owner ?? peeked.owner ?? undefined;
@@ -1055,6 +1137,12 @@ export async function executePush(
     return { exitCode: 1, stdout: '', stderr: errorBlock(message) };
   }
 
+  const mergeFields = {
+    coverageMerge,
+    ...(diff ? { diff } : {}),
+    ...(testReport ? { testReport } : {}),
+  };
+
   const body = mainline
     ? buildMainlineIngestBody({
         owner,
@@ -1063,8 +1151,7 @@ export async function executePush(
         headSha: sha,
         ref: `refs/heads/${baseRef}`,
         runUrl: cli.runUrl ?? null,
-        diff,
-        ...(testReport ? { testReport } : {}),
+        ...mergeFields,
       })
     : buildIngestBody({
         owner,
@@ -1076,11 +1163,18 @@ export async function executePush(
         headRef,
         headSha: sha,
         runUrl: cli.runUrl ?? null,
-        diff,
-        ...(testReport ? { testReport } : {}),
+        ...mergeFields,
       });
 
-  onProgress(mainline ? 'uploading mainline coverage…' : 'uploading…');
+  onProgress(
+    !merge.complete
+      ? 'uploading shard (incomplete)…'
+      : mainline
+        ? 'uploading mainline coverage…'
+        : handshakeOnly
+          ? 'sending complete handshake…'
+          : 'uploading…',
+  );
   const result = await postIngest({ apiBase, token, body, fetchFn });
   if (!result.ok) {
     return {
@@ -1093,11 +1187,12 @@ export async function executePush(
     };
   }
 
-  const formatted = formatPushSuccess(result.data, cli.json);
+  const formatted = formatPushSuccess(result.data, cli.json, merge);
   return {
     exitCode: 0,
     stdout: formatted.stdout,
     stderr: formatted.stderr,
+    complete: merge.complete,
     ...(result.data.shareUrl !== undefined ? { shareUrl: result.data.shareUrl } : {}),
     ...(result.data.expiresAt !== undefined
       ? { expiresAt: result.data.expiresAt }
@@ -1141,6 +1236,18 @@ export function registerPushCommand(program: Command): void {
       '--junit <path>',
       'JUnit XML for test analytics (flakes / slowest). Also TESTED_JUNIT or auto-detect junit.xml / test-results/junit.xml / coverage/junit.xml',
     )
+    .option(
+      '--file <path>',
+      'Coverage file to merge (repeatable). Overrides coverage.path.',
+      collectCoverageFile,
+      [],
+    )
+    .option('--complete', 'Conclude the gate (last shard / finish job)', false)
+    .option('--incomplete', 'Upload a shard without concluding GitHub checks', false)
+    .option('--parts <n>', 'Total shard count (Codecov after_n_builds / Qlty total-parts-count)')
+    .option('--part <n>', '1-based shard index')
+    .option('--run-id <id>', 'CI run id grouping shards for one SHA (or TESTED_RUN_ID)')
+    .option('--shard <id>', 'Optional shard label (or TESTED_SHARD)')
     .option('--json', 'Emit machine-readable JSON instead of the share URL only', false)
     .action(async (opts: PushCliOpts) => {
       try {

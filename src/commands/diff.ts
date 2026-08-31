@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { computeDiff } from '../core/computeDiff.js';
+import { collectCoverageFile } from '../core/coverage-paths.js';
 import { formatHuman } from '../output/human.js';
 import { formatCliError } from '../output/ui.js';
 
@@ -10,8 +11,14 @@ export function registerDiffCommand(program: Command): void {
     .description('Compute patch + project coverage against a base ref')
     .option('--base <ref>', 'Git base ref to diff against', undefined)
     .option('--with-base-coverage <path>', 'Compare project coverage against a baseline JSON', undefined)
+    .option(
+      '--file <path>',
+      'Coverage file to merge (repeatable). Overrides coverage.path.',
+      collectCoverageFile,
+      [],
+    )
     .option('--json', 'Emit schema-v1 JSON instead of human text', false)
-    .action(async (opts: { base?: string; withBaseCoverage?: string; json: boolean }) => {
+    .action(async (opts: { base?: string; withBaseCoverage?: string; json: boolean; file?: string[] }) => {
       try {
         const cwd = process.cwd();
         const config = await loadConfig({ cwd });
@@ -22,6 +29,7 @@ export function registerDiffCommand(program: Command): void {
           ...(opts.withBaseCoverage !== undefined
             ? { withBaseCoverage: opts.withBaseCoverage }
             : {}),
+          ...(opts.file && opts.file.length > 0 ? { coveragePaths: opts.file } : {}),
         });
 
         if (opts.json) {

@@ -23,6 +23,19 @@ describe('loadConfig', () => {
     expect(cfg.base).toBe('origin/develop');
   });
 
+  it('accepts coverage.path as a YAML list', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'tested-cfg-paths-'));
+    writeFileSync(
+      join(dir, '.tested.yaml'),
+      ['coverage:', '  path:', '    - coverage/lcov.info', '    - coverage/python.xml', ''].join('\n'),
+    );
+    const cfg = await loadConfig({ cwd: dir });
+    expect(cfg.coverage.path).toEqual(['coverage/lcov.info', 'coverage/python.xml']);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('rethrows non-ENOENT errors when reading .tested.yaml', async () => {
     const { mkdtempSync, mkdirSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');

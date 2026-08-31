@@ -3,6 +3,7 @@ import { basename, isAbsolute, join, resolve } from 'node:path';
 import { Command } from 'commander';
 import { simpleGit } from 'simple-git';
 import { loadConfig } from '../config.js';
+import { coveragePathList } from '../core/coverage-paths.js';
 import {
   assertSafeApiBase,
   DEFAULT_API_BASE,
@@ -210,20 +211,22 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
   }
 
   // 4. Coverage file (path from config when present)
-  let coverageRel = 'coverage/coverage-final.json';
+  let coverageRels = ['coverage/coverage-final.json'];
   if (hasConfig) {
     try {
       const config = await loadConfigFn({ cwd });
-      coverageRel = config.coverage.path;
+      const listed = coveragePathList(config.coverage.path);
+      if (listed.length > 0) coverageRels = listed;
     } catch {
       // keep default path
     }
   }
-  const coverageAbs = resolve(cwd, coverageRel);
-  if (isReadableFile(coverageAbs, exists)) {
+  const coverageRel = coverageRels.join(', ');
+  const missing = coverageRels.filter((rel) => !isReadableFile(resolve(cwd, rel), exists));
+  if (missing.length === 0) {
     checks.push({
       id: 'coverage',
-      label: 'Coverage file',
+      label: coverageRels.length > 1 ? 'Coverage files' : 'Coverage file',
       status: 'pass',
       detail: coverageRel,
       optional: true,
@@ -231,9 +234,9 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorResult> {
   } else {
     checks.push({
       id: 'coverage',
-      label: 'Coverage file',
+      label: coverageRels.length > 1 ? 'Coverage files' : 'Coverage file',
       status: 'warn',
-      detail: `missing ${coverageRel} — run: tested run`,
+      detail: `missing ${missing.join(', ')} — run: tested run`,
       optional: true,
     });
   }

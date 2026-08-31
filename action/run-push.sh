@@ -12,6 +12,12 @@
 #   INPUT_MAINLINE     action mainline input
 #   INPUT_REPOSITORY   github.repository (owner/name) — not git remote
 #   INPUT_BASE         optional git base override (same as check)
+#   INPUT_FILES        newline/comma-separated coverage files to merge
+#   INPUT_PARTS        total shard count
+#   INPUT_PART         1-based shard index
+#   INPUT_COMPLETE     true | false | empty (infer from parts/part)
+#   INPUT_RUN_ID       optional run id
+#   INPUT_SHARD        optional shard label
 #   ACTION_PATH        github.action_path (resolve-check-base.sh)
 #   EVENT_NAME         github.event_name
 #   EVENT_PR_NUMBER    github.event.pull_request.number
@@ -30,6 +36,11 @@ SAFE_REPO_RE='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
 unset TESTED_ALLOW_CUSTOM_API_URL
 unset TESTED_API_URL
 unset TESTED_JUNIT
+unset TESTED_COVERAGE_FILES
+unset TESTED_PARTS
+unset TESTED_PART
+unset TESTED_RUN_ID
+unset TESTED_SHARD
 unset GITHUB_PR_NUMBER
 unset PR_NUMBER
 unset GITHUB_REPOSITORY
@@ -90,6 +101,41 @@ if [ -n "${INPUT_JUNIT:-}" ]; then
   EXTRA_JUNIT=(--junit "$INPUT_JUNIT")
 fi
 
+EXTRA_FILES=()
+if [ -n "${INPUT_FILES:-}" ]; then
+  export TESTED_COVERAGE_FILES="$INPUT_FILES"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    EXTRA_FILES+=(--file "$line")
+  done < <(printf '%s\n' "$INPUT_FILES" | tr ',' '\n')
+fi
+
+EXTRA_MERGE=()
+if [ -n "${INPUT_PARTS:-}" ]; then
+  EXTRA_MERGE+=(--parts "$INPUT_PARTS")
+  export TESTED_PARTS="$INPUT_PARTS"
+fi
+if [ -n "${INPUT_PART:-}" ]; then
+  EXTRA_MERGE+=(--part "$INPUT_PART")
+  export TESTED_PART="$INPUT_PART"
+fi
+if [ "${INPUT_COMPLETE:-}" = "true" ]; then
+  EXTRA_MERGE+=(--complete)
+elif [ "${INPUT_COMPLETE:-}" = "false" ]; then
+  EXTRA_MERGE+=(--incomplete)
+fi
+if [ -n "${INPUT_RUN_ID:-}" ]; then
+  EXTRA_MERGE+=(--run-id "$INPUT_RUN_ID")
+  export TESTED_RUN_ID="$INPUT_RUN_ID"
+elif [ -n "${INPUT_PARTS:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then
+  EXTRA_MERGE+=(--run-id "$GITHUB_RUN_ID")
+  export TESTED_RUN_ID="$GITHUB_RUN_ID"
+fi
+if [ -n "${INPUT_SHARD:-}" ]; then
+  EXTRA_MERGE+=(--shard "$INPUT_SHARD")
+  export TESTED_SHARD="$INPUT_SHARD"
+fi
+
 EXTRA_REPO=()
 if [[ "${INPUT_REPOSITORY:-}" =~ $SAFE_REPO_RE ]]; then
   export GITHUB_REPOSITORY="$INPUT_REPOSITORY"
@@ -109,7 +155,7 @@ fi
 
 if [ "$MAINLINE" = "true" ]; then
   echo "tested push --mainline --base $BASE"
-  tested push --mainline --base "$BASE" "${EXTRA_REPO[@]}" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"
+  tested push --mainline --base "$BASE" "${EXTRA_REPO[@]}" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}" "${EXTRA_FILES[@]}" "${EXTRA_MERGE[@]}"
   exit 0
 fi
 
@@ -120,4 +166,4 @@ if [ -z "$PR" ]; then
 fi
 
 echo "tested push --pr $PR --base $BASE"
-tested push --pr "$PR" --base "$BASE" "${EXTRA_REPO[@]}" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}"
+tested push --pr "$PR" --base "$BASE" "${EXTRA_REPO[@]}" "${EXTRA_URL[@]}" "${EXTRA_JUNIT[@]}" "${EXTRA_FILES[@]}" "${EXTRA_MERGE[@]}"

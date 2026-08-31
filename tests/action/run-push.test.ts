@@ -70,6 +70,9 @@ describe('action.yml push wiring', () => {
     expect(yml).not.toContain('PR="${{ github.event.pull_request.number }}"');
     expect(yml).not.toContain('TESTED_API_URL: ${{ inputs.api-url }}');
     expect(yml).toContain('INPUT_JUNIT: ${{ inputs.junit }}');
+    expect(yml).toContain('INPUT_FILES: ${{ inputs.files }}');
+    expect(yml).toContain('INPUT_PARTS: ${{ inputs.parts }}');
+    expect(yml).toContain('INPUT_COMPLETE: ${{ inputs.complete }}');
     expect(yml).toMatch(/test-results\/junit\.xml/);
     const runPushSh = readFileSync(script, 'utf8');
     for (const candidate of DEFAULT_JUNIT_CANDIDATES) {
@@ -366,6 +369,58 @@ describe('run-push.sh', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).not.toMatch(/JUnit report/);
       expect(readFileSync(log, 'utf8')).not.toContain('--junit');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('passes --file / --parts / --incomplete for a matrix shard', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tested-run-push-'));
+    try {
+      const { bin, log } = mockTested(dir);
+      const result = runPush(
+        {
+          TESTED_TOKEN: 't',
+          EVENT_PR_NUMBER: '8',
+          INPUT_REPOSITORY: 'acme/widgets',
+          INPUT_FILES: 'coverage/lcov.info,coverage/python.xml',
+          INPUT_PARTS: '2',
+          INPUT_PART: '1',
+          INPUT_COMPLETE: 'false',
+          INPUT_SHARD: 'node',
+          INPUT_RUN_ID: '99',
+        },
+        bin,
+      );
+      expect(result.status).toBe(0);
+      const argv = readFileSync(log, 'utf8');
+      expect(argv).toContain('--file coverage/lcov.info');
+      expect(argv).toContain('--file coverage/python.xml');
+      expect(argv).toContain('--parts 2');
+      expect(argv).toContain('--part 1');
+      expect(argv).toContain('--incomplete');
+      expect(argv).toContain('--shard node');
+      expect(argv).toContain('--run-id 99');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('passes --complete on the finish handshake', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tested-run-push-'));
+    try {
+      const { bin, log } = mockTested(dir);
+      const result = runPush(
+        {
+          TESTED_TOKEN: 't',
+          EVENT_PR_NUMBER: '8',
+          INPUT_REPOSITORY: 'acme/widgets',
+          INPUT_COMPLETE: 'true',
+        },
+        bin,
+      );
+      expect(result.status).toBe(0);
+      expect(readFileSync(log, 'utf8')).toContain('--complete');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

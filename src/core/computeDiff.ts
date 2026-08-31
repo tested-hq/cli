@@ -12,6 +12,7 @@ import { parseCoverage } from './coverage.js';
 import { parseUnifiedDiff } from './diff.js';
 import { splitByIgnore } from './ignores.js';
 import { assertWithinRoot } from './assert-within-root.js';
+import { parseAndMergeCoverage, resolveCoveragePaths } from './coverage-paths.js';
 import { buildDiffOutput } from '../output/json.js';
 
 export interface ComputeDiffOpts {
@@ -21,6 +22,11 @@ export interface ComputeDiffOpts {
   baseRef?: string;
   /** Optional baseline coverage path for project-delta computation. */
   withBaseCoverage?: string;
+  /**
+   * Override `coverage.path` (repeatable `--file` / Action `files`).
+   * Multiple paths are parsed then merged (union + max hits).
+   */
+  coveragePaths?: string[];
   /**
    * Optional pre-opened repo. Tests may pass this; production callers usually
    * let computeDiff open the repo itself.
@@ -43,10 +49,13 @@ export async function computeDiff(opts: ComputeDiffOpts): Promise<DiffOutput> {
   const diffText = await unifiedDiff(ctx, base);
   const addedByFile = parseUnifiedDiff(diffText);
 
-  const coveragePath = resolve(cwd, config.coverage.path);
-  assertWithinRoot(ctx.repoRoot, coveragePath);
-  const allFiles = await parseCoverage({
-    path: coveragePath,
+  const coveragePaths = resolveCoveragePaths({
+    ...(opts.coveragePaths ? { files: opts.coveragePaths } : {}),
+    configPath: config.coverage.path,
+  });
+  const allFiles = await parseAndMergeCoverage({
+    paths: coveragePaths,
+    cwd,
     repoRoot: ctx.repoRoot,
     ...(config.coverage.format ? { format: config.coverage.format } : {}),
   });

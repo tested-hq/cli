@@ -9,6 +9,17 @@ describe('TestedConfigSchema', () => {
     expect(parsed.coverage.path).toBe('coverage/coverage-final.json');
   });
 
+  it('accepts coverage.path as a list of files to merge', () => {
+    const parsed = TestedConfigSchema.parse({
+      coverage: { path: ['coverage/lcov.info', 'coverage/python.xml'] },
+    });
+    expect(parsed.coverage.path).toEqual(['coverage/lcov.info', 'coverage/python.xml']);
+  });
+
+  it('rejects an empty coverage.path list', () => {
+    expect(() => TestedConfigSchema.parse({ coverage: { path: [] } })).toThrow();
+  });
+
   it('accepts custom ignores list', () => {
     const parsed = TestedConfigSchema.parse({ ignores: ['scripts/**'] });
     expect(parsed.ignores).toEqual(['scripts/**']);

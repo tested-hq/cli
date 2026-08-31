@@ -52,7 +52,106 @@ jobs:
 | `token` | _(empty)_ | Ingest token → `TESTED_TOKEN` |
 | `api-url` | _(empty)_ | Optional `TESTED_API_URL` |
 | `junit` | _(empty)_ | JUnit XML path. When empty, searches `junit.xml`, `test-results/junit.xml`, `coverage/junit.xml`, `reports/junit.xml` under the working directory. |
+| `files` | _(empty)_ | Coverage files to **merge locally** (newline or comma-separated). Overrides `coverage.path`. One job, many artifacts. |
+| `parts` | _(empty)_ | Total shard count for a matrix. Push is incomplete until `complete: true` or `part == parts`. Missing shards fail or stay pending — no carryforward. |
+| `part` | _(empty)_ | 1-based shard index. When equal to `parts`, this upload concludes the gate. |
+| `complete` | _(empty)_ | `true` concludes the gate (finish job / last part). `false` uploads a shard only — GitHub checks must not complete. Empty infers from `parts`/`part`. |
+| `run-id` | _(empty)_ | Groups shards for one CI run + SHA. Defaults to `github.run_id` when `parts` is set. |
+| `shard` | _(empty)_ | Optional shard label (e.g. matrix job name). |
 | `node-version` | `24` | `actions/setup-node` version |
+
+## One job, many coverage files
+
+Merge locally, then check and push **once**. Hits are maxed (not averaged); files are unioned. Last file does not win.
+
+```yaml
+- uses: tested-hq/cli/action@main
+  with:
+    version: 0.1.8
+    files: |
+      coverage/lcov.info
+      coverage/python.xml
+    push: true
+    token: ${{ secrets.TESTED_TOKEN }}
+```
+
+Or list the same paths in `.tested.yaml`:
+
+```yaml
+coverage:
+  path:
+    - coverage/lcov.info
+    - coverage/python.xml
+```
+
+## Matrix jobs (do not conclude on shard 1 of N)
+
+A parallel matrix must **not** post a passing patch check on the first shard.
+`tested check` skips the local gate when the upload is incomplete.
+`tested push` sends `coverageMerge.complete: false` until `--complete` or the last part.
+
+**Preferred (works today, no app change):** collect artifacts and merge in one finish job.
+
+```yaml
+jobs:
+  test:
+    strategy:
+      matrix:
+        lang: [node, python]
+    steps:
+      - uses: actions/checkout@v4
+      - run: # produce coverage/lcov.info or coverage/python.xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.lang }}
+          path: coverage/
+  tested:
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+      - uses: tested-hq/cli/action@main
+        with:
+          version: 0.1.8
+          files: |
+            coverage-node/lcov.info
+            coverage-python/python.xml
+          push: true
+          token: ${{ secrets.TESTED_TOKEN }}
+```
+
+**Shard uploads + finish handshake** (app must honor `coverageMerge` — see CLI PR):
+
+```yaml
+jobs:
+  shard:
+    strategy:
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - run: # produce coverage
+      - uses: tested-hq/cli/action@main
+        with:
+          version: 0.1.8
+          push: true
+          parts: 3
+          shard: node-${{ matrix.node }}
+          token: ${{ secrets.TESTED_TOKEN }}
+  finish:
+    needs: shard
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: tested-hq/cli/action@main
+        with:
+          version: 0.1.8
+          push: true
+          complete: true
+          token: ${{ secrets.TESTED_TOKEN }}
+```
+
+Until tested-hq/app stores shards and merges on `complete: true`, use the artifact + local-merge finish job. Shard jobs still must pass `parts` / `complete: false` so they do not conclude GitHub checks.
 
 ## Local path (monorepo / dogfood)
 

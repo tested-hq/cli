@@ -3,6 +3,7 @@ import { isAbsolute, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
+import { coveragePathList } from '../core/coverage-paths.js';
 import type { TestRunner } from './init.js';
 import { dim, errorBlock, heading, tip } from '../output/ui.js';
 
@@ -202,7 +203,9 @@ export function registerRunCommand(program: Command): void {
       }
 
       const config = await loadConfig({ cwd });
-      const coveragePath = resolve(cwd, config.coverage.path);
+      const coverageRel =
+        coveragePathList(config.coverage.path)[0] ?? 'coverage/coverage-final.json';
+      const coveragePath = resolve(cwd, coverageRel);
       const { command, args } = resolveRunCommand({
         runner: config.testRunner,
         extraArgs: forwarded,
@@ -223,7 +226,7 @@ export function registerRunCommand(program: Command): void {
             args,
             exitCode: exit,
             coverageWritten,
-            coveragePath: config.coverage.path,
+            coveragePath: coverageRel,
           });
           process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
           process.exit(exit);
@@ -238,8 +241,8 @@ export function registerRunCommand(program: Command): void {
           process.stderr.write(
             dim(
               coverageWritten
-                ? `tests failed (exit ${exit}); coverage still written to ${config.coverage.path}`
-                : `tests failed (exit ${exit}); no coverage file at ${config.coverage.path}`,
+                ? `tests failed (exit ${exit}); coverage still written to ${coverageRel}`
+                : `tests failed (exit ${exit}); no coverage file at ${coverageRel}`,
             ) + '\n',
           );
         }
