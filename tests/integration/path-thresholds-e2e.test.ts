@@ -12,17 +12,18 @@ import { makePathRepo } from '../helpers/path-repo.js';
 import { PathsJsonSchema } from '../../src/schemas.js';
 
 describe('runtime e2e — path-level coverage thresholds', () => {
-  let repo: string;
+  let repo: string | undefined;
 
   beforeAll(async () => {
     repo = (await makePathRepo()).repo;
-  }, 20_000);
+  });
 
   afterAll(async () => {
-    await rm(repo, { recursive: true, force: true });
+    if (repo) await rm(repo, { recursive: true, force: true });
   });
 
   it('fails check when one glob is under its floor and reports both path results', async () => {
+    expect(repo).toBeDefined();
     const result = await invokeCli(['check', '--base', 'main', '--json'], { cwd: repo });
     expect(result.exitCode).toBe(1);
 
