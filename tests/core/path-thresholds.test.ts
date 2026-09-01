@@ -5,7 +5,9 @@ import {
   pathThresholdsPass,
   pathThresholdsToJson,
   resolvePathThresholds,
+  resolvePathThresholdsJson,
 } from '../../src/core/path-thresholds.js';
+import { EMPTY_PATCH_REASON } from '../../src/core/patch.js';
 import { PathsJsonSchema } from '../../src/schemas.js';
 import type { FileCoverage } from '../../src/core/istanbul.js';
 import type { TestedConfig } from '../../src/schemas.js';
@@ -121,6 +123,47 @@ describe('evaluatePathThresholds', () => {
     });
     expect(results).toEqual([]);
   });
+
+  it('returns no results when thresholds are missing or paths is empty', () => {
+    const noThresholds = evaluatePathThresholds({
+      config: { ...config(), thresholds: undefined },
+      files: [api, cli],
+      addedByFile: addedBoth(),
+    });
+    const emptyList = evaluatePathThresholds({
+      config: { ...config(), thresholds: { patch: 80, project: 50, paths: [] } },
+      files: [api, cli],
+      addedByFile: addedBoth(),
+    });
+    expect(noThresholds).toEqual([]);
+    expect(emptyList).toEqual([]);
+    expect(pathThresholdsPass([])).toBe(true);
+  });
+
+  it('skips path patch when matched files have no executable added lines', () => {
+    const results = evaluatePathThresholds({
+      config: {
+        ...config(),
+        thresholds: {
+          patch: 80,
+          project: 50,
+          paths: [{ glob: 'src/cli/**', patch: 90, project: 50 }],
+        },
+      },
+      files: [cli],
+      addedByFile: new Map(),
+    });
+    expect(results).toHaveLength(1);
+    expect(results[0]?.status).toBe('pass');
+    expect(results[0]?.patch).toMatchObject({
+      skipped: true,
+      pass: true,
+      reason: EMPTY_PATCH_REASON,
+      threshold: 90,
+    });
+    expect(results[0]?.project).toMatchObject({ pct: 100, threshold: 50, pass: true });
+    expect(pathThresholdsPass(results)).toBe(true);
+  });
 });
 
 describe('pathThresholdsToJson', () => {
@@ -147,5 +190,64 @@ describe('pathThresholdsToJson', () => {
       patch: { pct: 100, threshold: 70, pass: true },
       project: { threshold: 70, pass: true },
     });
+  });
+
+  it('omits executable/pct on a skipped missing glob and on an empty path patch', () => {
+    const missing = pathThresholdsToJson(
+      evaluatePathThresholds({
+        config: config(),
+        files: [cli],
+        addedByFile: addedBoth(),
+      }),
+    );
+    const apiMissing = missing.find((p) => p.glob === 'src/api/**');
+    expect(apiMissing).toMatchObject({
+      status: 'missing',
+      present: false,
+      skipped: true,
+      reason: MISSING_PATH_REASON,
+      patch: { threshold: 90, skipped: true, reason: MISSING_PATH_REASON },
+      project: { threshold: 90, skipped: true, reason: MISSING_PATH_REASON },
+    });
+    expect(apiMissing?.patch.pct).toBeUndefined();
+    expect(apiMissing?.patch.executable).toBeUndefined();
+
+    const emptyPatch = pathThresholdsToJson(
+      evaluatePathThresholds({
+        config: {
+          ...config(),
+          thresholds: {
+            patch: 80,
+            project: 50,
+            paths: [{ glob: 'src/cli/**', patch: 90, project: 50 }],
+          },
+        },
+        files: [cli],
+        addedByFile: new Map(),
+      }),
+    );
+    expect(emptyPatch[0]?.patch).toMatchObject({
+      skipped: true,
+      reason: EMPTY_PATCH_REASON,
+      threshold: 90,
+    });
+    expect(emptyPatch[0]?.project.pass).toBe(true);
+  });
+
+  it('resolvePathThresholdsJson is undefined without paths and returns the array when set', () => {
+    expect(
+      resolvePathThresholdsJson({
+        config: { ...config(), thresholds: { patch: 80, project: 50 } },
+        files: [api, cli],
+        addedByFile: addedBoth(),
+      }),
+    ).toBeUndefined();
+    const json = resolvePathThresholdsJson({
+      config: config(),
+      files: [api, cli],
+      addedByFile: addedBoth(),
+    });
+    expect(json).toHaveLength(2);
+    expect(json?.[0]?.glob).toBe('src/api/**');
   });
 });

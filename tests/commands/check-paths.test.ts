@@ -114,6 +114,83 @@ describe('runCheck — path floors vs global floor', () => {
     expect(parsed.overall).toBe('fail');
   });
 
+  it('prints both path floors in human output', () => {
+    const result = runCheck({
+      config: makeConfig(),
+      diff: combinedDiff(),
+      json: false,
+      files: [api, cli],
+      addedByFile: added,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.pathResults).toHaveLength(2);
+    expect(result.stdout).toContain('src/api/**');
+    expect(result.stdout).toContain('src/cli/**');
+    expect(result.stdout).toContain('threshold 90');
+    expect(result.stdout).toContain('threshold 70');
+    expect(result.stdout).toContain('[FAIL]');
+    expect(result.stdout).toContain('[PASS]');
+  });
+
+  it('marks a missing path glob in human output without 0%', () => {
+    const result = runCheck({
+      config: makeConfig(),
+      diff: {
+        ...combinedDiff(),
+        patch: { executable: 5, covered: 5, pct: 100 },
+        project: { executable: 6, covered: 6, pct: 100, delta: null },
+      },
+      json: false,
+      files: [cli],
+      addedByFile: added,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.overall).toBe('pass');
+    expect(result.stdout).toContain('src/api/**');
+    expect(result.stdout).toContain('[MISSING]');
+    expect(result.stdout).toContain('src/cli/**');
+    expect(result.stdout).toContain('[PASS]');
+    expect(result.stdout).not.toMatch(/src\/api\/\*\*[\s\S]{0,80}0\.0%/);
+  });
+
+  it('skips path patch in human output when the glob has no executable added lines', () => {
+    const result = runCheck({
+      config: {
+        ...makeConfig(),
+        thresholds: {
+          patch: 80,
+          project: 50,
+          paths: [{ glob: 'src/cli/**', patch: 90, project: 50 }],
+        },
+      },
+      diff: combinedDiff(),
+      json: false,
+      files: [cli],
+      addedByFile: new Map(),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('src/cli/**');
+    expect(result.stdout).toContain('[SKIP]');
+    expect(result.stdout).toContain('no executable lines in the patch');
+    expect(result.stdout).not.toMatch(/Patch\s+0(?:\.0)?%/);
+  });
+
+  it('notes skipped path globs when the gate fails for another reason', () => {
+    const result = runCheck({
+      config: makeConfig(),
+      diff: combinedDiff(),
+      json: false,
+      files: [api],
+      addedByFile: added,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.pathResults.find((p) => p.glob === 'src/cli/**')?.status).toBe('missing');
+    expect(result.pathResults.find((p) => p.glob === 'src/api/**')?.status).toBe('fail');
+    expect(result.stdout).toContain('src/cli/**');
+    expect(result.stdout).toContain('[MISSING]');
+    expect(result.stdout).toContain('Path globs with no files this run are skipped (not 0%).');
+  });
+
   it('does not invent a flags map when only path floors are configured', () => {
     const result = runCheck({
       config: makeConfig(),
