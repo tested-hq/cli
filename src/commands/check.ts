@@ -20,6 +20,12 @@ import {
   type FlagCheckResult,
 } from '../core/flags.js';
 import type { FileCoverage } from '../core/istanbul.js';
+import {
+  evaluatePathThresholds,
+  pathThresholdsPass,
+  pathThresholdsToJson,
+  type PathCheckResult,
+} from '../core/path-thresholds.js';
 import { EMPTY_PATCH_REASON, isEmptyPatch } from '../core/patch.js';
 import type { DiffOutput, TestedConfig } from '../schemas.js';
 import { badge, dim, heading, tip, formatCliError } from '../output/ui.js';
@@ -41,6 +47,7 @@ export interface CheckResult {
   projectPass: boolean;
   overall: 'pass' | 'fail';
   flagResults: FlagCheckResult[];
+  pathResults: PathCheckResult[];
   /** Content the CLI should write to stdout (with trailing newline). */
   stdout: string;
   /** Content the CLI should write to stderr (with trailing newline). */
@@ -58,6 +65,7 @@ export function formatIncompleteCheck(state: CoverageMergeState, json: boolean):
       projectPass: true,
       overall: 'pass',
       flagResults: [],
+      pathResults: [],
       stdout:
         JSON.stringify({
           overall: 'pending',
@@ -76,6 +84,7 @@ export function formatIncompleteCheck(state: CoverageMergeState, json: boolean):
     projectPass: true,
     overall: 'pass',
     flagResults: [],
+    pathResults: [],
     stdout: '',
     stderr:
       `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
@@ -97,6 +106,7 @@ export function formatCompleteHandshakeCheck(json: boolean): CheckResult {
       projectPass: true,
       overall: 'pass',
       flagResults: [],
+      pathResults: [],
       stdout: JSON.stringify({ overall: 'pending', complete: true, note }) + '\n',
       stderr: '',
       exitCode: 0,
@@ -108,6 +118,7 @@ export function formatCompleteHandshakeCheck(json: boolean): CheckResult {
     projectPass: true,
     overall: 'pass',
     flagResults: [],
+    pathResults: [],
     stdout: '',
     stderr:
       `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
@@ -129,10 +140,10 @@ function formatMetricLine(
   return `${indent}${label.padEnd(8)}  ${pctStr}%  (threshold ${threshold})  ${status}`;
 }
 
-/** Present-flag metrics always have numbers. Missing flags never reach here. */
-function presentPct(metric: FlagCheckResult['patch']): { pct: number; pass: boolean } {
+/** Present-flag/path metrics always have numbers. Missing entries never reach here. */
+function presentPct(metric: { pct?: number; pass?: boolean }): { pct: number; pass: boolean } {
   if (metric.pct === undefined || metric.pass === undefined) {
-    throw new Error('present flag metric missing pct/pass');
+    throw new Error('present metric missing pct/pass');
   }
   return { pct: metric.pct, pass: metric.pass };
 }
@@ -178,6 +189,41 @@ function formatFlagLines(results: readonly FlagCheckResult[]): string[] {
   return lines;
 }
 
+function formatPathLines(results: readonly PathCheckResult[]): string[] {
+  if (results.length === 0) return [];
+  const lines: string[] = [''];
+  for (const path of results) {
+    if (path.status === 'missing') {
+      lines.push(
+        `  ${path.glob}  ${dim(path.reason ?? 'missing this run')}  ${badge('missing')}`,
+      );
+      continue;
+    }
+    lines.push(`  ${path.glob}  ${path.status === 'pass' ? badge('pass') : badge('fail')}`);
+    if (path.patch.skipped) {
+      lines.push(
+        `    ${'Patch'.padEnd(8)}  ${dim('-')}  ${EMPTY_PATCH_REASON}  ${badge('skip')}`,
+      );
+    } else {
+      const patch = presentPct(path.patch);
+      lines.push(
+        formatMetricLine('Patch', patch.pct, path.patch.threshold, patch.pass, '    '),
+      );
+    }
+    const project = presentPct(path.project);
+    lines.push(
+      formatMetricLine(
+        'Project',
+        project.pct,
+        path.project.threshold,
+        project.pass,
+        '    ',
+      ),
+    );
+  }
+  return lines;
+}
+
 export function runCheck(input: CheckInput): CheckResult {
   const { config, diff, json } = input;
 
@@ -188,6 +234,7 @@ export function runCheck(input: CheckInput): CheckResult {
       projectPass: true,
       overall: 'pass',
       flagResults: [],
+      pathResults: [],
       stdout: '',
       stderr:
         `${dim('tested.dev — coverage gate')}  ${badge('info')}\n` +
@@ -215,9 +262,15 @@ export function runCheck(input: CheckInput): CheckResult {
     addedByFile: input.addedByFile ?? new Map(),
     ...(input.onlyFlag !== undefined ? { onlyFlag: input.onlyFlag } : {}),
   });
+  const pathResults = evaluatePathThresholds({
+    config,
+    files: input.files ?? [],
+    addedByFile: input.addedByFile ?? new Map(),
+  });
   const flagsOk = flagsPass(flagResults);
+  const pathsOk = pathThresholdsPass(pathResults);
   const overall: 'pass' | 'fail' =
-    patchPass && projectPass && flagsOk ? 'pass' : 'fail';
+    patchPass && projectPass && flagsOk && pathsOk ? 'pass' : 'fail';
   const exitCode: 0 | 1 = overall === 'pass' ? 0 : 1;
 
   if (json) {
@@ -232,6 +285,7 @@ export function runCheck(input: CheckInput): CheckResult {
       },
       project: { pct: projectPct, threshold: projectThreshold, pass: projectPass },
       ...(flagResults.length > 0 ? { flags: flagsToJson(flagResults) } : {}),
+      ...(pathResults.length > 0 ? { paths: pathThresholdsToJson(pathResults) } : {}),
       overall,
       ...(patchSkipped ? { note: EMPTY_PATCH_REASON } : {}),
     };
@@ -241,6 +295,7 @@ export function runCheck(input: CheckInput): CheckResult {
       projectPass,
       overall,
       flagResults,
+      pathResults,
       stdout: JSON.stringify(payload) + '\n',
       stderr: '',
       exitCode,
@@ -262,6 +317,7 @@ export function runCheck(input: CheckInput): CheckResult {
   }
   lines.push(formatMetricLine('Project', projectPct, projectThreshold, projectPass));
   lines.push(...formatFlagLines(flagResults));
+  lines.push(...formatPathLines(pathResults));
   if (overall === 'fail') {
     lines.push('');
     if (patchSkipped) {
@@ -273,6 +329,12 @@ export function runCheck(input: CheckInput): CheckResult {
         dim(
           'Flags with no files this run are skipped (not 0%). Scope the job with --flag when this coverage file is one package.',
         ),
+      );
+    }
+    const missingPaths = pathResults.filter((p) => p.status === 'missing');
+    if (missingPaths.length > 0) {
+      lines.push(
+        dim('Path globs with no files this run are skipped (not 0%).'),
       );
     }
     lines.push(tip('add tests for uncovered ranges: tested diff'));
@@ -294,6 +356,7 @@ export function runCheck(input: CheckInput): CheckResult {
     projectPass,
     overall,
     flagResults,
+    pathResults,
     stdout: lines.join('\n'),
     stderr: '',
     exitCode,
@@ -311,7 +374,7 @@ export function registerCheckCommand(program: Command): void {
   program
     .command('check')
     .description(
-      'Exit non-zero if patch or project coverage falls below configured thresholds.',
+      'Exit non-zero if patch, project, or path coverage falls below configured thresholds.',
     )
     .option('--json', 'Emit machine-readable JSON to stdout (exit code unchanged).', false)
     .option('--base <ref>', 'Git base ref to diff against', undefined)

@@ -3,6 +3,7 @@ import { loadConfig } from '../config.js';
 import { computeDiffContext } from '../core/computeDiff.js';
 import { collectCoverageFile } from '../core/coverage-paths.js';
 import { resolveFlagsJson } from '../core/flags.js';
+import { resolvePathThresholdsJson } from '../core/path-thresholds.js';
 import { formatHuman } from '../output/human.js';
 import { formatCliError } from '../output/ui.js';
 
@@ -35,7 +36,12 @@ export function registerDiffCommand(program: Command): void {
 
         if (opts.json) {
           const flags = resolveFlagsJson({ config, files, addedByFile });
-          const payload = flags ? { ...diff, flags } : diff;
+          const paths = resolvePathThresholdsJson({ config, files, addedByFile });
+          const payload = {
+            ...diff,
+            ...(flags ? { flags } : {}),
+            ...(paths ? { paths } : {}),
+          };
           process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
         } else {
           process.stdout.write(
