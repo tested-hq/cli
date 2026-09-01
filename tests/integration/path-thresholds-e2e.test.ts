@@ -23,8 +23,11 @@ describe('runtime e2e — path-level coverage thresholds', () => {
   });
 
   it('fails check when one glob is under its floor and reports both path results', async () => {
-    expect(repo).toBeDefined();
-    const result = await invokeCli(['check', '--base', 'main', '--json'], { cwd: repo });
+    const cwd = repo;
+    if (cwd === undefined) {
+      throw new Error('path-threshold fixture was not created');
+    }
+    const result = await invokeCli(['check', '--base', 'main', '--json'], { cwd });
     expect(result.exitCode).toBe(1);
 
     const gate = JSON.parse(result.stdout) as {
