@@ -64,8 +64,8 @@ describe('package honesty', () => {
   const runPushSh = readFileSync(join(root, 'action/run-push.sh'), 'utf8');
   const ciYml = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
 
-  it('is 0.1.9 with engines.node >=24', () => {
-    expect(pkg.version).toBe('0.1.9');
+  it('is 0.1.10 with engines.node >=24', () => {
+    expect(pkg.version).toBe('0.1.10');
     expect(pkg.engines.node).toBe('>=24');
     expect(readFileSync(join(root, '.nvmrc'), 'utf8').trim()).toBe('24');
     expect(CLI_VERSION).toBe(pkg.version);
@@ -91,7 +91,7 @@ describe('package honesty', () => {
   });
 
   it('defaults the Action version input to this package version', () => {
-    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.9'/);
+    expect(actionYml).toMatch(/version:\s*\n(?:.*\n)*?\s+default: '0\.1\.10'/);
     expect(actionYml).toContain('install-cli.sh');
     expect(actionYml).toContain('run-check.sh');
     expect(actionYml).toContain('run-push.sh');
@@ -105,7 +105,7 @@ describe('package honesty', () => {
 
   it('dogfoods hobby push on PRs without hardcoding the token', () => {
     expect(ciYml).toContain('uses: ./action');
-    expect(ciYml).toContain("version: '0.1.9'");
+    expect(ciYml).toContain("version: '0.1.10'");
     expect(ciYml).toContain("push: 'true'");
     expect(ciYml).toContain('pr-number: ${{ github.event.pull_request.number }}');
     expect(ciYml).toContain('token: ${{ secrets.TESTED_TOKEN }}');

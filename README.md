@@ -25,7 +25,7 @@ CI uses the composite Action (`tested-hq/cli/action@main`). It installs `@tested
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.9
+    version: 0.1.10
     token: ${{ secrets.TESTED_TOKEN }}
 ```
 
@@ -195,7 +195,7 @@ Or pass `--file` repeatedly / Action `files`. A CI matrix must not conclude the 
 ```yaml
 - uses: tested-hq/cli/action@main
   with:
-    version: 0.1.9
+    version: 0.1.10
     push: true
     pr-number: ${{ github.event.pull_request.number }}
     token: ${{ secrets.TESTED_TOKEN }}
