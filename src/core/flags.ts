@@ -1,5 +1,5 @@
-import { minimatch } from 'minimatch';
 import type { FlagConfig, FlagMetricJson, FlagsJsonMap, TestedConfig } from '../schemas.js';
+import { filterFilesByGlobs, pathMatchesAnyGlob } from './globs.js';
 import type { FileCoverage } from './istanbul.js';
 import {
   computePatchCoverage,
@@ -48,22 +48,15 @@ export interface EvaluateFlagsInput {
   onlyFlag?: string;
 }
 
-const MATCH_OPTS = { dot: true, matchBase: true } as const;
-
 export function pathMatchesFlag(filePath: string, patterns: readonly string[]): boolean {
-  const normalized = filePath.replace(/\\/g, '/');
-  return patterns.some(
-    (p) =>
-      minimatch(normalized, p, MATCH_OPTS) ||
-      minimatch(normalized, `**/${p}`, MATCH_OPTS),
-  );
+  return pathMatchesAnyGlob(filePath, patterns);
 }
 
 export function filterFilesByFlag(
   files: readonly FileCoverage[],
   patterns: readonly string[],
 ): FileCoverage[] {
-  return files.filter((f) => pathMatchesFlag(f.path, patterns));
+  return filterFilesByGlobs(files, patterns);
 }
 
 export function configuredFlagNames(config: TestedConfig): string[] {

@@ -20,6 +20,14 @@ export const FlagConfigSchema = z.object({
   thresholds: FlagThresholdsSchema.optional(),
 });
 
+/**
+ * Independent coverage floor for one path glob (`thresholds.paths`).
+ * Omitted patch/project inherit the global floors. Not a flag.
+ */
+export const PathThresholdSchema = FlagThresholdsSchema.extend({
+  glob: z.string().min(1),
+});
+
 export const TestedConfigSchema = z.object({
   ignores: z.array(z.string()).default([]),
   coverage: z
@@ -45,6 +53,11 @@ export const TestedConfigSchema = z.object({
     .object({
       patch: z.number().min(0).max(100),
       project: z.number().min(0).max(100),
+      /**
+       * Per-path glob floors. Graded from this run's matched files only.
+       * A glob with no files this run is skipped (not 0%). Not flags.
+       */
+      paths: z.array(PathThresholdSchema).optional(),
     })
     .optional(),
   /**
@@ -58,6 +71,7 @@ export type TestedConfig = z.infer<typeof TestedConfigSchema>;
 export type CoverageFormat = z.infer<typeof CoverageFormatSchema>;
 export type FlagConfig = z.infer<typeof FlagConfigSchema>;
 export type FlagThresholds = z.infer<typeof FlagThresholdsSchema>;
+export type PathThreshold = z.infer<typeof PathThresholdSchema>;
 
 export const UncoveredRangeSchema = z.object({
   start: z.number().int().positive(),
@@ -131,6 +145,26 @@ export const FlagsJsonMapSchema = z.record(FlagNameSchema, FlagResultJsonSchema)
 export type FlagMetricJson = z.infer<typeof FlagMetricJsonSchema>;
 export type FlagResultJson = z.infer<typeof FlagResultJsonSchema>;
 export type FlagsJsonMap = z.infer<typeof FlagsJsonMapSchema>;
+
+/**
+ * Per-path JSON (`tested check --json` `paths[]`). Same metric numbers as
+ * flags (pct + threshold + pass) so the app scorecard and MCP share one shape.
+ * No GitHub check slugs — coverage stays the only PR gate.
+ */
+export const PathResultJsonSchema = z.object({
+  glob: z.string().min(1),
+  status: z.enum(['pass', 'fail', 'missing']),
+  present: z.boolean(),
+  skipped: z.literal(true).optional(),
+  reason: z.string().optional(),
+  patch: FlagMetricJsonSchema,
+  project: FlagMetricJsonSchema,
+});
+
+export const PathsJsonSchema = z.array(PathResultJsonSchema);
+
+export type PathResultJson = z.infer<typeof PathResultJsonSchema>;
+export type PathsJson = z.infer<typeof PathsJsonSchema>;
 
 // Re-export test analytics schema (JUnit → optional ingest field)
 export {

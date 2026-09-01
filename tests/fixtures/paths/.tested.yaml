@@ -1,0 +1,11 @@
+base: main
+thresholds:
+  patch: 80
+  project: 50
+  paths:
+    - glob: src/api/**
+      patch: 90
+      project: 90
+    - glob: src/cli/**
+      patch: 70
+      project: 70

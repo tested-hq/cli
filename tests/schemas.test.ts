@@ -3,6 +3,7 @@ import {
   TestedConfigSchema,
   DiffOutputSchema,
   FlagsJsonMapSchema,
+  PathsJsonSchema,
 } from '../src/schemas.js';
 
 describe('TestedConfigSchema', () => {
@@ -81,6 +82,51 @@ describe('TestedConfigSchema', () => {
     expect(parsed.flags?.backend?.thresholds).toBeUndefined();
   });
 
+  it('round-trips thresholds.paths globs without dropping them', () => {
+    const parsed = TestedConfigSchema.parse({
+      thresholds: {
+        patch: 80,
+        project: 90,
+        paths: [
+          { glob: 'src/api/**', patch: 90, project: 90 },
+          { glob: 'src/cli/**', patch: 70, project: 70 },
+        ],
+      },
+    });
+    expect(parsed.thresholds).toEqual({
+      patch: 80,
+      project: 90,
+      paths: [
+        { glob: 'src/api/**', patch: 90, project: 90 },
+        { glob: 'src/cli/**', patch: 70, project: 70 },
+      ],
+    });
+  });
+
+  it('inherits omitted path floors from the entry being optional', () => {
+    const parsed = TestedConfigSchema.parse({
+      thresholds: {
+        patch: 80,
+        project: 90,
+        paths: [{ glob: 'src/api/**', patch: 90 }],
+      },
+    });
+    expect(parsed.thresholds?.paths).toEqual([{ glob: 'src/api/**', patch: 90 }]);
+  });
+
+  it('rejects empty path globs and out-of-range path floors', () => {
+    expect(() =>
+      TestedConfigSchema.parse({
+        thresholds: { patch: 80, project: 90, paths: [{ glob: '', patch: 90 }] },
+      }),
+    ).toThrow();
+    expect(() =>
+      TestedConfigSchema.parse({
+        thresholds: { patch: 80, project: 90, paths: [{ glob: 'src/api/**', patch: 101 }] },
+      }),
+    ).toThrow();
+  });
+
   it('rejects empty flag paths and unsafe flag names', () => {
     expect(() =>
       TestedConfigSchema.parse({ flags: { frontend: { paths: [] } } }),
@@ -137,5 +183,29 @@ describe('FlagsJsonMapSchema', () => {
     expect(parsed.backend?.skipped).toBe(true);
     expect(parsed.backend?.patch.executable).toBeUndefined();
     expect(parsed.backend?.patch.pct).toBeUndefined();
+  });
+});
+
+describe('PathsJsonSchema', () => {
+  it('accepts the tested check --json paths array', () => {
+    const parsed = PathsJsonSchema.parse([
+      {
+        glob: 'src/api/**',
+        status: 'fail',
+        present: true,
+        patch: { pct: 80, threshold: 90, pass: false, executable: 5, covered: 4 },
+        project: { pct: 83.3, threshold: 90, pass: false, executable: 6, covered: 5 },
+      },
+      {
+        glob: 'src/cli/**',
+        status: 'pass',
+        present: true,
+        patch: { pct: 100, threshold: 70, pass: true, executable: 5, covered: 5 },
+        project: { pct: 100, threshold: 70, pass: true, executable: 6, covered: 6 },
+      },
+    ]);
+    expect(parsed[0]?.glob).toBe('src/api/**');
+    expect(parsed[0]?.patch.pass).toBe(false);
+    expect(parsed[1]?.patch.pass).toBe(true);
   });
 });

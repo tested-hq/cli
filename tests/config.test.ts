@@ -36,6 +36,19 @@ describe('loadConfig', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('loads thresholds.paths from .tested.yaml', async () => {
+    const cfg = await loadConfig({ cwd: join(here, 'fixtures/paths') });
+    expect(cfg.thresholds).toEqual({
+      patch: 80,
+      project: 50,
+      paths: [
+        { glob: 'src/api/**', patch: 90, project: 90 },
+        { glob: 'src/cli/**', patch: 70, project: 70 },
+      ],
+    });
+    expect(cfg.flags).toBeUndefined();
+  });
+
   it('loads flags from .tested.yaml', async () => {
     const cfg = await loadConfig({ cwd: join(here, 'fixtures/flags') });
     expect(cfg.flags?.frontend?.paths).toEqual(['apps/web/**', 'packages/ui/**']);
