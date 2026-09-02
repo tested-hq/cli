@@ -1,10 +1,8 @@
 # tested GitHub Action
 
-Install `@tested/cli` from npm, run `tested check`, optionally `tested push`.
+Installs `@tested/cli` from npm, runs `tested check`, and optionally `tested push`.
 
-`uses: tested-hq/cli/action@main`. Default install is `npm i -g @tested/cli@<version>`.
-
-## Minimal (gate only)
+## Usage
 
 ```yaml
 # .github/workflows/tested.yml
@@ -17,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # your project: install deps + produce coverage/coverage-final.json
+      # produce coverage first (coverage/coverage-final.json by default)
       - run: pnpm install --frozen-lockfile
       - run: pnpm test -- --coverage
 
@@ -26,7 +24,7 @@ jobs:
           version: 0.1.10
 ```
 
-## Gate + share URL
+That is the gate. To also post the result to the PR and the project page on app.tested.dev:
 
 ```yaml
 - uses: tested-hq/cli/action@main
@@ -37,33 +35,52 @@ jobs:
     token: ${{ secrets.TESTED_TOKEN }}
 ```
 
+In production, pin `uses:` to a commit SHA and keep `version: 0.1.10`.
+
+What runs:
+
+1. `actions/setup-node` with Node 24+.
+2. `npm i -g @tested/cli@<version>`.
+3. `tested check --base <sha>`. The base is the PR base SHA on `pull_request`, or the previous commit on `push`. It is fetched when missing, so a shallow checkout works.
+4. `tested push` with the same base when `push: true`. This step is `continue-on-error`, so an upload problem cannot change the gate.
+
+Coverage is the only PR gate. JUnit results feed the Tests and Performance tabs and never fail the PR.
+
+## Before this step
+
+1. Check out the repo. The default shallow clone from `actions/checkout@v4` is enough.
+2. Produce coverage. Istanbul/V8 JSON at `coverage/coverage-final.json`, or the path in `.tested.yaml` (lcov, Cobertura, JaCoCo, gcov text, SimpleCov).
+3. Optional: emit JUnit XML at `junit.xml`, `test-results/junit.xml`, `coverage/junit.xml`, or `reports/junit.xml`, or set `junit:`.
+4. For `push: true`, store an ingest token as `secrets.TESTED_TOKEN`. Mint it at `https://app.tested.dev/repos/{owner}/{name}/settings`.
+
 ## Inputs
 
 | Input | Default | Description |
 |-------|---------|-------------|
 | `version` | `0.1.10` | npm version of `@tested/cli` |
-| `cli-path` | _(empty)_ | Local checkout of `tested-hq/cli` (skips npm) |
-| `cli-repository` | `tested-hq/cli` | GitHub `owner/name` for the git fallback |
-| `cli-ref` | _(empty)_ | Optional git ref instead of npm |
-| `working-directory` | `.` | Project root with `.tested.yaml` + coverage |
-| `base` | _(empty)_ | Override git base for check and push. Default: PR base SHA, or previous commit on push. Fetched if missing (no `fetch-depth: 0` required). |
+| `working-directory` | `.` | Directory with `.tested.yaml` and coverage |
+| `base` | | Git base for check and push. Default: PR base SHA, or the previous commit on `push` |
 | `push` | `false` | Run `tested push` after check |
-| `pr-number` | _(empty)_ | PR number for push (else `pull_request` event) |
-| `token` | _(empty)_ | Ingest token → `TESTED_TOKEN` |
-| `api-url` | _(empty)_ | Optional `TESTED_API_URL` |
-| `junit` | _(empty)_ | JUnit XML path. When empty, searches `junit.xml`, `test-results/junit.xml`, `coverage/junit.xml`, `reports/junit.xml` under the working directory. |
-| `files` | _(empty)_ | Coverage files to **merge locally** (newline or comma-separated). Overrides `coverage.path`. One job, many artifacts. |
-| `parts` | _(empty)_ | Total shard count for a matrix. Push is incomplete until `complete: true` or `part == parts`. Missing shards fail or stay pending — no carryforward. |
-| `part` | _(empty)_ | 1-based shard index. When equal to `parts`, this upload concludes the gate. |
-| `complete` | _(empty)_ | `true` concludes the gate (finish job / last part). `false` uploads a shard only — GitHub checks must not complete. Empty infers from `parts`/`part`. |
-| `run-id` | _(empty)_ | Groups shards for one CI run + SHA. Defaults to `github.run_id` when `parts` is set. |
-| `shard` | _(empty)_ | Optional shard label (e.g. matrix job name). |
-| `flag` | _(empty)_ | Optional flag name when this job is already scoped to one package. The coverage file is that flag. Other packages are omitted from this upload (not 0%). A flag with no files this run is skipped, not a 0% result. |
-| `node-version` | `24` | `actions/setup-node` version |
+| `pr-number` | | PR number for push. Default: the `pull_request` event |
+| `mainline` | `false` | Push default-branch project coverage with no PR. Set automatically on a `push` event to the default branch |
+| `token` | | Ingest token, passed as `TESTED_TOKEN` |
+| `api-url` | | `TESTED_API_URL` override. Ambient `TESTED_API_URL` is ignored |
+| `junit` | | JUnit XML path. Default: the first of `junit.xml`, `test-results/junit.xml`, `coverage/junit.xml`, `reports/junit.xml` |
+| `files` | | Coverage files to merge before check and push (newline or comma separated). Overrides `coverage.path` |
+| `flag` | | Flag name when this job is scoped to one package. The coverage file is that flag |
+| `parts` | | Total shard count for a matrix |
+| `part` | | 1-based shard index. When equal to `parts`, this upload concludes the gate |
+| `complete` | | `true` concludes the gate, `false` uploads a shard only. Empty infers from `parts` and `part` |
+| `run-id` | | Groups shards for one run and SHA. Default: `github.run_id` when `parts` is set |
+| `shard` | | Shard label, for example the matrix job name |
+| `node-version` | `24` | Node version for `actions/setup-node` |
+| `cli-path` | | Local checkout of `tested-hq/cli` to build from instead of npm |
+| `cli-ref` | | Git ref of `tested-hq/cli` to build from instead of npm |
+| `cli-repository` | `tested-hq/cli` | Repository for `cli-ref` |
 
-## One job, many coverage files
+## Several coverage files in one job
 
-Merge locally, then check and push **once**. Hits are maxed (not averaged); files are unioned. Last file does not win.
+Merge locally, then check and push once. Paths are unioned and hits are maxed per line.
 
 ```yaml
 - uses: tested-hq/cli/action@main
@@ -76,22 +93,11 @@ Merge locally, then check and push **once**. Hits are maxed (not averaged); file
     token: ${{ secrets.TESTED_TOKEN }}
 ```
 
-Or list the same paths in `.tested.yaml`:
+Or list the same paths under `coverage.path` in `.tested.yaml`.
 
-```yaml
-coverage:
-  path:
-    - coverage/lcov.info
-    - coverage/python.xml
-```
+## Matrix jobs
 
-## Matrix jobs (do not conclude on shard 1 of N)
-
-A parallel matrix must **not** post a passing patch check on the first shard.
-`tested check` skips the local gate when the upload is incomplete.
-`tested push` sends `coverageMerge.complete: false` until `--complete` or the last part.
-
-**Preferred (works today, no app change):** collect artifacts and merge in one finish job.
+Collect each job's coverage as an artifact and run the Action once in a finish job. Shard 1 of N must never conclude the gate on its own.
 
 ```yaml
 jobs:
@@ -121,44 +127,13 @@ jobs:
           token: ${{ secrets.TESTED_TOKEN }}
 ```
 
-**Shard uploads + finish handshake** (app must honor `coverageMerge` — see CLI PR):
+If a shard job has to push on its own, pass `parts` (and optionally `part` and `shard`). The upload is marked incomplete until the last part or a job with `complete: true`, so it cannot conclude the PR check, and `tested check` skips the local gate for it.
 
-```yaml
-jobs:
-  shard:
-    strategy:
-      matrix:
-        node: [20, 22, 24]
-    steps:
-      - uses: actions/checkout@v4
-      - run: # produce coverage
-      - uses: tested-hq/cli/action@main
-        with:
-          version: 0.1.10
-          push: true
-          parts: 3
-          shard: node-${{ matrix.node }}
-          token: ${{ secrets.TESTED_TOKEN }}
-  finish:
-    needs: shard
-    if: always()
-    steps:
-      - uses: actions/checkout@v4
-      - uses: tested-hq/cli/action@main
-        with:
-          version: 0.1.10
-          push: true
-          complete: true
-          token: ${{ secrets.TESTED_TOKEN }}
-```
+## Flags
 
-Until tested-hq/app stores shards and merges on `complete: true`, use the artifact + local-merge finish job. Shard jobs still must pass `parts` / `complete: false` so they do not conclude GitHub checks.
+`flags` in `.tested.yaml` add per-package floors to `tested check`. A flag with no coverage files this run is skipped.
 
-## Flags (per package)
-
-`.tested.yaml` `flags` add per-package floors on `tested check` (global + each flag whose paths appear this run). A flag with no files this run is skipped (not 0%).
-
-A frontend-only job can tag the coverage file as that flag:
+A job that only builds one package tags its coverage file as that flag:
 
 ```yaml
 - uses: tested-hq/cli/action@main
@@ -167,9 +142,11 @@ A frontend-only job can tag the coverage file as that flag:
     flag: frontend
 ```
 
-`tested push` sends flags that had coverage files this run so the app can post `tested.dev / patch / frontend` (and project) checks. Skipped flags are omitted from ingest (not sent as `executable: 0`). A `--flag` scoped job is a real partial upload.
+Other packages are left out of that upload, so their last result stands.
 
-## Local path (monorepo / dogfood)
+## Local checkout
+
+For a monorepo that vendors the CLI, or to dogfood a branch:
 
 ```yaml
 - uses: ./path/to/cli/action
@@ -177,7 +154,7 @@ A frontend-only job can tag the coverage file as that flag:
     cli-path: ./path/to/cli
 ```
 
-## Install CLI outside Actions
+## Outside Actions
 
 ```bash
 pnpm add -D @tested/cli
@@ -185,31 +162,20 @@ pnpm add -D @tested/cli
 npx @tested/cli
 ```
 
-Node 24+.
+Node 24+. Manual equivalent of the Action:
 
-## Prerequisites in the consumer workflow
-
-1. Checkout the repo (`actions/checkout@v4` default shallow clone is enough —
-   the Action fetches the PR base SHA / previous push commit when missing).
-2. Produce coverage **before** this action runs — Istanbul/V8 JSON at
-   `coverage/coverage-final.json` by default, or the path in `.tested.yaml`
-   (lcov, Cobertura, JaCoCo, gcov text, SimpleCov). e.g. `pnpm test -- --coverage`
-   or `tested run`. For flakes / suite time, also emit JUnit XML at
-   `junit.xml`, `test-results/junit.xml`, or `coverage/junit.xml` (or set
-   `junit:`).
-3. For `push: true`, store an ingest token as `secrets.TESTED_TOKEN`
-   (mint at `https://app.tested.dev/repos/{owner}/{name}/settings`).
+```yaml
+- run: tested check --base ${{ github.event.pull_request.base.sha }}
+- run: tested push --pr ${{ github.event.pull_request.number }} --base ${{ github.event.pull_request.base.sha }}
+  env:
+    TESTED_TOKEN: ${{ secrets.TESTED_TOKEN }}
+```
 
 ## Security
 
-- Prefer `token: ${{ secrets.TESTED_TOKEN }}` on this step only. Do not export
-  `TESTED_TOKEN` at workflow/job level before untrusted steps (`pnpm test`):
-  that code can read the secret or write `GITHUB_ENV`.
-- `api-url`, `version`, `cli-path`, `cli-ref`, and `cli-repository` are trusted
-  install/destination inputs. Do not pass PR titles, branch names, or other
-  untrusted values into them.
-- The action ignores ambient `TESTED_API_URL` / `TESTED_ALLOW_CUSTOM_API_URL`
-  (a previous step writing `GITHUB_ENV` cannot redirect the Bearer token).
-- Push uses `github.repository` for `--owner` / `--name`, not `git remote origin`.
-- The action sets `TESTED_SAFE_RUN=1` for the check step context.
-- Never log the token value.
+- Pass `token: ${{ secrets.TESTED_TOKEN }}` on this step only. Exporting `TESTED_TOKEN` at the job level exposes it to earlier untrusted steps such as `pnpm test`.
+- `api-url`, `version`, `cli-path`, `cli-ref`, and `cli-repository` are trusted inputs. Do not feed them PR titles, branch names, or other untrusted values.
+- Ambient `TESTED_API_URL` and `TESTED_ALLOW_CUSTOM_API_URL` are ignored, so a previous step writing `GITHUB_ENV` cannot redirect the token.
+- Push uses `github.repository` for `--owner` and `--name`.
+- The check step runs with `TESTED_SAFE_RUN=1`.
+- The token value is never logged.

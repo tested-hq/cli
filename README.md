@@ -1,6 +1,6 @@
 # @tested/cli
 
-Coverage your agent can use. CLI for patch + project coverage with agent-readable JSON output.
+Patch and project coverage for pull requests. Same binary, same verdict on your machine, in CI, and inside an agent.
 
 Docs: https://tested.dev/docs
 
@@ -10,101 +10,110 @@ Node 24+.
 
 ```bash
 pnpm add -D @tested/cli
-# or
-npx @tested/cli          # runs `tested` (`td` is the same CLI after install)
 ```
+
+Or run it without installing:
 
 ```bash
 npx @tested/cli --version
-# after a local install, pnpm swallows --version unless you use exec:
-pnpm exec -- tested --version
 ```
 
-CI uses the composite Action (`tested-hq/cli/action@main`). It installs `@tested/cli` from npm.
+`tested` and `td` are the same binary. After a local install, use `pnpm exec -- tested --version` (pnpm swallows `--version` without the `--`).
+
+## Quick start
+
+```bash
+cd your-project
+tested setup    # writes .tested.yaml, runs doctor, prints the CI snippet
+tested run      # runs your tests with coverage
+tested diff     # patch and project coverage against the base branch
+tested check    # exit 1 when coverage is under the thresholds
+```
+
+`diff` and `check` run locally with no account and no token.
+
+To put the result on the PR, push it:
+
+```bash
+export TESTED_TOKEN=...   # https://app.tested.dev/repos/{owner}/{name}/settings
+tested push --pr 42
+```
+
+## Commands
+
+| Command | What it does | Exit code |
+|---|---|---|
+| `tested setup` | Writes `.tested.yaml` if missing, runs `doctor`, prints the CI snippet and token instructions | doctor's |
+| `tested doctor` | Checks Node, git, `.tested.yaml`, coverage file, `origin`, token, API URL | 0 ok, 1 on a hard failure |
+| `tested run` | Runs the test suite with coverage. Writes the coverage file even when tests fail | the runner's |
+| `tested diff` | Patch and project coverage against `base`, with uncovered ranges per file | 0, even under threshold |
+| `tested check` | Enforces `thresholds` | 0 pass, 1 fail |
+| `tested push` | Uploads coverage (and JUnit, if present) to tested.dev | 0 ok, 1 error |
+
+Also: `init`, `token`, `whoami`, `explain <file>:<line>`, `ignores`.
+
+Every command takes `--json`. Output is one JSON document on stdout; exit codes do not change. `tested run --json` is tested's own summary (command, exit code, coverage path) and is not forwarded to the test runner.
+
+## Configure
+
+`tested setup` writes `.tested.yaml`:
 
 ```yaml
-- uses: tested-hq/cli/action@main
-  with:
-    version: 0.1.10
-    token: ${{ secrets.TESTED_TOKEN }}
+base: main
+testRunner: vitest        # vitest | jest | pytest
+thresholds:
+  patch: 80               # % of added executable lines that must be covered
+  project: 90             # % of the whole project
+ignores:
+  - "**/*.test.ts"
+  - "**/node_modules/**"
 ```
 
-## First 10 minutes
+### Path floors
 
-```
-tested setup            # init + doctor + CI snippet + token help
-tested doctor           # environment checklist (exit 0/1)
-tested run              # writes coverage even if tests fail
-tested diff             # report (exit 0)
-tested check            # gate (exit 1 if under threshold)
-tested push --pr <n>    # needs TESTED_TOKEN
-tested token            # mint URL from git remote + env names
-tested whoami           # whether a token is set (never prints it)
-```
-
-## Security
-
-> **Only point `tested` at repositories you trust.** `tested run` (and the MCP
-> server’s `write_and_verify`) executes the project’s own test runner (`npx
-> vitest` / jest / pytest). That is equivalent to running untrusted code when
-> the cwd is untrusted.
-
-| Control | Detail |
-|---------|--------|
-| Ingest token | Prefer `TESTED_TOKEN` / `TESTED_INGEST_TOKEN` / `TESTED_TOKEN_FILE` (mode `0600`). Avoid `--token` on shared hosts — it appears on process argv (`ps`). |
-| Safe run args | In CI, non-interactive shells, or when `TESTED_SAFE_RUN=1`, `tested run` rejects `--watch` / `--watchAll` and `--config` paths outside the repo root. |
-| API URL | Ingest posts only to `https://app.tested.dev` / `*.tested.dev` (or `http://localhost`). Other HTTPS hosts need `TESTED_ALLOW_CUSTOM_API_URL=1`. Redirects with Bearer token are refused. |
-| MCP hosts | For always-on agent hosts, set `TESTED_ALLOWED_CWDS` (see `@tested/mcp`) so tools cannot target arbitrary directories. |
-
-## Agent loop
-
-```
-tested setup                # init + doctor + CI / token guidance
-tested run                  # run tests with coverage (writes coverage even if tests fail)
-tested diff                 # patch + project report (exit 0; not the gate)
-tested check                # enforce thresholds (exit non-zero on fail)
-tested push --pr <n>        # share URL on app.tested.dev (needs token)
-```
-
-## Terminal UX
-
-Human output is monochrome editorial craft: restrained color via picocolors (green / yellow / red for status only). ASCII badges (`[PASS]` / `[FAIL]`) and metric bars. Honors `NO_COLOR` and non-TTY (no ornaments when color is unsupported).
-
-`--json` is available on setup, doctor, init, run, diff, check, push, token, whoami, explain, and ignores. `tested run --json` is tested's own summary (command, exit, coverage path). It is not forwarded to the test runner.
-
-## Dogfood
-
-This repo enforces its own coverage gate on every push via husky pre-push hook:
-
-```
-🐕 dogfood: running tested on itself...
-... coverage report ...
-🐕 patch coverage 87.2% >= 50% — push allowed
-```
-
-The hook runs `tested run && tested diff` against the upstream branch (or `HEAD~1` if no upstream). Blocks push if patch coverage < 50%. Override with `git push --no-verify` (don't).
-
-## Gating
-
-`tested diff` is a report (exit 0) even when coverage is under the yaml threshold. `tested check` is the gate: it enforces the `thresholds` block in `.tested.yaml` and exits non-zero when patch or project coverage falls below the configured floor.
+`thresholds.paths` holds parts of the tree to their own floor. Omitted `patch` or `project` inherit the global values.
 
 ```yaml
 thresholds:
-  patch: 80     # % of newly-added lines that must be covered
-  project: 90   # % of the whole project that must be covered
+  patch: 80
+  project: 90
+  paths:
+    - glob: "src/core/**"
+      patch: 95
+    - glob: "src/output/**"
+      project: 70
 ```
 
+Each glob is graded from the coverage files in this run. A glob that matches no files this run is skipped. Path floors are available on every plan.
+
+### Flags
+
+Per-package floors for a monorepo. Same rules as path floors, plus a name the app posts as its own PR check (`tested.dev / patch / frontend`).
+
+```yaml
+flags:
+  frontend:
+    paths: ["apps/web/**", "packages/ui/**"]
+    thresholds:
+      patch: 90             # project inherits thresholds.project
+  backend:
+    paths: ["apps/api/**"]
 ```
-$ tested check
-tested.dev — coverage gate  [PASS]
 
-  Patch     87.3%  (threshold 80)  [PASS]
-  Project   92.1%  (threshold 90)  [PASS]
+A job that only builds one package: `tested check --flag frontend` (Action input `flag`). That coverage file is the flag. Other packages are left out of the upload, and a flag with no files this run is skipped.
 
-thresholds met
-$ echo $?
-0
+## What gates the PR
 
+Coverage is the only PR gate. `tested check` exits 1 when patch, project, a flag, or a path floor is under its threshold. Everything else on app.tested.dev is visibility: the Tests and Performance tabs show failures, retries, and suite time from JUnit. A flaky or slow test does not fail the PR.
+
+Rules `check` follows:
+
+- `diff` reports and exits 0, even under threshold. `check` gates.
+- A patch with no executable lines (tests, docs, comments, ignored files) skips the patch gate. Project still applies.
+- No `thresholds` in `.tested.yaml`: `check` prints a notice on stderr and exits 0.
+- A flag or path glob with no files this run is skipped.
+
+```
 $ tested check
 tested.dev — coverage gate  [FAIL]
 
@@ -116,62 +125,27 @@ $ echo $?
 1
 ```
 
-If the patch has no executable lines in scope (tests-only, comments-only, docs-only, or ignored files), the patch gate is **skipped** — not reported as 0% coverage. Project still applies.
-
 ```
-$ tested check
-tested.dev — coverage gate  [PASS]
-
-  Patch     -  no executable lines in the patch  [SKIP]
-  Project   92.1%  (threshold 90)  [PASS]
-
-No executable lines in the patch — patch gate skipped. Project threshold met.
+$ tested check --json
+{"patch":{"pct":87.3,"threshold":80,"pass":true},"project":{"pct":92.1,"threshold":90,"pass":true},"overall":"pass"}
 ```
 
-If `thresholds` is missing from `.tested.yaml`, `tested check` prints a notice on stderr and exits 0 — configs that haven't opted in stay green.
-
-### Flags (per package)
-
-Independent floors so a monorepo total cannot hide one package. Each flag is graded from **this run's** coverage files.
-
-```yaml
-flags:
-  frontend:
-    paths: ["apps/web/**", "packages/ui/**"]
-    thresholds:
-      patch: 90   # inherits project from thresholds.project
-  backend:
-    paths: ["apps/api/**"]
-```
-
-`tested check` applies global `thresholds` plus each flag whose paths appear in the merged coverage. Per-flag patch is new executable lines in those paths. A flag with no files this run is **skipped** (not 0%) — an affected-graph or scoped job that did not collect that package is not a fail.
-
-A job already scoped to one package: `tested check --flag frontend` (Action `flag:`). That coverage file **is** the flag. Other packages are omitted from this upload.
-
-`--json` lists per-flag results (`flags.frontend.patchCheck` → `tested.dev / patch / frontend`). Skipped flags have `status: missing` and `skipped: true` with no `executable` / `pct`. `tested push` omits skipped flags from ingest so the last successful upload for that package still stands. `tested diff --json` includes the same map as check.
+With flags or path floors configured, `--json` adds `flags` (keyed by name) and `paths` (one entry per glob). Skipped entries have `status: "missing"` and `skipped: true`, with no `pct`. `tested diff --json` includes the same two fields.
 
 ## Coverage formats
 
-`tested diff` / `tested check` / `tested push` all read the same internal model (file path + statement hits). Parsers normalize these artifacts into that model:
+Default path: `coverage/coverage-final.json`. Set `coverage.path` for anything else. The format is detected from the filename and contents; set `coverage.format` to pin it.
 
-| `coverage.format` | Typical path | Produced by |
+| `coverage.format` | Typical path | From |
 |---|---|---|
-| `istanbul-json` (or `v8-json`) | `coverage/coverage-final.json` | Vitest, Jest, nyc — V8 coverage emitted as Istanbul JSON |
-| `lcov` | `coverage/lcov.info`, `*.lcov` | lcov, vitest lcov reporter, pytest-cov `--cov-report=lcov` |
+| `istanbul-json` (alias `v8-json`) | `coverage/coverage-final.json` | Vitest, Jest, nyc |
+| `lcov` | `coverage/lcov.info` | lcov, Vitest `lcov` reporter, pytest-cov `--cov-report=lcov` |
 | `cobertura` | `coverage/cobertura.xml`, `coverage.xml` | Cobertura, pytest-cov `--cov-report=xml` |
-| `jacoco` | `jacoco.xml` | JaCoCo (Maven / Gradle) |
-| `gcov` | `*.gcov` or a directory of them | GNU `gcov` **text** reports (not raw `.gcno` / `.gcda` notes) |
-| `simplecov` | `coverage/.resultset.json` | SimpleCov (Ruby) |
+| `jacoco` | `jacoco.xml` | JaCoCo (Maven, Gradle) |
+| `gcov` | `*.gcov`, or a directory of them | `gcov` text reports |
+| `simplecov` | `coverage/.resultset.json` | SimpleCov |
 
-When `coverage.format` is omitted, the CLI auto-detects from the filename and, if needed, the file contents. `coverage/coverage-final.json` is treated as Istanbul/V8 JSON (the default). Set format explicitly in `.tested.yaml` when you want to pin it:
-
-```yaml
-coverage:
-  path: coverage/lcov.info
-  format: lcov   # optional — auto-detected from lcov.info
-```
-
-Multiple files in one job are merged (union of paths, **max** hits — not averaged, not last-file-wins):
+Several files in one job merge into one report: union of paths, max hits per line.
 
 ```yaml
 coverage:
@@ -180,96 +154,114 @@ coverage:
     - coverage/python.xml
 ```
 
-Or pass `--file` repeatedly / Action `files`. A CI matrix must not conclude the gate on shard 1 of N: `tested push --parts N --part 1` sends `coverageMerge.complete: false`; only `--complete` or the last part posts checks. See the Action README on GitHub (`tested-hq/cli/action`).
+Or pass `--file` (repeatable) to `diff`, `check`, and `push`. Action input: `files`.
 
-`ignores` globs apply after parse, same as before.
+- pytest-cov: emit lcov or Cobertura XML. coverage.py JSON is not read.
+- gcov: run `gcov` on the `.gcda` files first and point at the `.gcov` text. `.gcno` and `.gcda` are not parsed.
+- SimpleCov: `coverage/.resultset.json` or the `simplecov-json` gem output.
 
-**pytest-cov:** emit lcov or Cobertura XML (`--cov-report=lcov` / `--cov-report=xml`). coverage.py JSON is not ingested.
+JUnit XML is separate from coverage. `tested push` picks up `junit.xml`, `test-results/junit.xml`, `coverage/junit.xml`, or `reports/junit.xml` (or `--junit <path>` / `TESTED_JUNIT`) and sends failures, retries, and durations to the Tests tab.
 
-**gcov:** run `gcov` on your `.gcda` files in CI and point `coverage.path` at the resulting `.gcov` text (or the directory that contains them). Binary notes are not parsed.
-
-**SimpleCov:** the default `coverage/.resultset.json` (and the `simplecov-json` gem report) are accepted. Array index 0 is line 1; `null` is non-executable.
-
-### GitHub Actions
+## GitHub Action
 
 ```yaml
-- uses: tested-hq/cli/action@main
-  with:
-    version: 0.1.10
-    push: true
-    pr-number: ${{ github.event.pull_request.number }}
-    token: ${{ secrets.TESTED_TOKEN }}
+# .github/workflows/tested.yml
+name: tested
+on: [pull_request]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test -- --coverage
+      - uses: tested-hq/cli/action@main
+        with:
+          version: 0.1.10
+          push: true
+          pr-number: ${{ github.event.pull_request.number }}
+          token: ${{ secrets.TESTED_TOKEN }}
 ```
 
-### `--json`
+In production, pin `uses:` to a commit SHA and keep `version: 0.1.10`.
 
-For programmatic consumers:
+The Action installs `@tested/cli@<version>` from npm, resolves the base from the PR (a shallow checkout is enough), runs `tested check`, then `tested push` when `push: true`. Push runs with `continue-on-error`, so an upload problem cannot change the gate. Inputs, merged files, and matrix examples: https://github.com/tested-hq/cli/tree/main/action.
 
-```
-$ tested check --json
-{"patch":{"pct":87.3,"threshold":80,"pass":true},"project":{"pct":92.1,"threshold":90,"pass":true},"overall":"pass"}
-```
+## Push to tested.dev
 
-When `flags` are configured, `tested check --json` and `tested diff --json` include a `flags` map (status, patch/project totals, and `tested.dev / patch / <name>` slugs). `tested push` posts that same map as a sibling field on the ingest body.
+`tested push` uploads the report and returns a share URL for the PR. The project page at `https://app.tested.dev/repos/{owner}/{name}` shows the PR gate, default-branch coverage, and the Tests and Performance tabs from JUnit.
 
-`--json` suppresses the human layout; the exit code is unchanged.
-
-## Share (`tested push`)
-
-Push local patch/project coverage to [tested.dev](https://app.tested.dev) and get a share URL back. Closes the agent loop: local coverage → cloud link.
+1. Install the GitHub App and open the repo once on https://app.tested.dev/repos.
+2. Mint a token at `https://app.tested.dev/repos/{owner}/{name}/settings`. `tested token` prints the URL for your `origin`.
+3. Set `TESTED_TOKEN` (or `TESTED_TOKEN_FILE` with mode `0600`, or `TESTED_INGEST_TOKEN`).
 
 ```
-$ export TESTED_TOKEN=…          # or TESTED_INGEST_TOKEN / --token
-$ export GITHUB_PR_NUMBER=42     # or --pr 42
-$ tested push
+$ tested push --pr 42
 ✓ shared  https://app.tested.dev/share/…
   expires 2026-…
 ```
 
-| Flag / env | Purpose |
+On the default branch, `tested push --mainline` records project coverage with no PR and no share URL. The Action does this when `push: true` runs on a `push` event to the default branch.
+
+| Flag / env | |
 |---|---|
-| `TESTED_TOKEN` / `TESTED_INGEST_TOKEN` / `TESTED_TOKEN_FILE` | Ingest auth (**preferred** — not on argv) |
-| `--token` | Ingest auth (works; warns on TTY; visible in `ps`) |
-| `--pr` / `GITHUB_PR_NUMBER` / `PR_NUMBER` | PR number (required) |
-| `--url` / `TESTED_API_URL` | API base (default `https://app.tested.dev`; other hosts need `TESTED_ALLOW_CUSTOM_API_URL=1`) |
-| `--owner` / `--name` | Repo identity (default: `GITHUB_REPOSITORY`, else `origin` remote) |
-| `--pr-title`, `--author`, `--base-ref`, `--head-ref` | PR metadata overrides |
-| `--base` | Git base for the coverage diff (same as `tested diff --base`) |
-| `--junit` / `TESTED_JUNIT` | JUnit XML for flakes / suite time (or auto-detect `junit.xml`, `test-results/junit.xml`, `coverage/junit.xml`) |
-| `--run-url` | Optional CI run URL |
+| `--pr` / `GITHUB_PR_NUMBER` / `PR_NUMBER` | PR number. Required unless `--mainline` |
+| `--mainline` | Default-branch project coverage |
+| `--base` | Git base for the diff (same as `tested diff --base`) |
+| `--junit` / `TESTED_JUNIT` | JUnit XML. Auto-detected when omitted |
 | `--file` | Coverage file to merge (repeatable) |
-| `--parts` / `--part` / `--complete` / `--incomplete` | Matrix shard handshake (`coverageMerge`) |
-| `--run-id` / `--shard` | Group shards for one CI run + SHA |
-| `--json` | Machine output: `{ "shareUrl", "expiresAt?" }` |
+| `--flag` | This coverage file is one flag |
+| `--parts N --part i`, `--complete`, `--incomplete` | Matrix shard handshake. An upload with `complete: false` does not conclude the PR check |
+| `--run-id` / `--shard` | Group shards for one CI run and SHA |
+| `--owner` / `--name` | Repo identity. Default: `GITHUB_REPOSITORY`, else the `origin` remote |
+| `--url` / `TESTED_API_URL` | API base. Default `https://app.tested.dev` |
+| `--token` | Works, but shows up in `ps`. Prefer the env vars |
+| `--json` | `{ "shareUrl", "expiresAt" }` |
 
-### `tested run` extra args
+## Agents
 
-`tested run` writes `coverage/coverage-final.json` even when the suite fails (Vitest `--coverage.reportOnFailure`). Extra args are forwarded to the runner via argv (no shell). `--json` is consumed by tested and is not forwarded.
+The loop an agent runs, all with `--json`:
 
-In CI / non-interactive mode / when `TESTED_SAFE_RUN=1`:
-
-- `--watch`, `--watchAll`, `-w` are **rejected** (hang risk)
-- `--config` / `-c` paths that resolve **outside the repo root** are **rejected**
-
-Typical CI step after `tested check`:
-
-```yaml
-- run: pnpm exec tested push --pr "${{ github.event.pull_request.number }}" --base "${{ github.event.pull_request.base.sha }}"
-  env:
-    TESTED_TOKEN: ${{ secrets.TESTED_TOKEN }}
+```bash
+tested run --json       # { command, exitCode, coverageWritten, coveragePath }
+tested diff --json      # files[].uncoveredRanges says where tests are missing
+tested check --json     # overall: "pass" | "fail"
+tested explain src/foo.ts:42 --json
 ```
+
+`tested diff --json` is schema v1: `base`, `head`, `patch`, `project`, `files[]` (each with `patchCoverage`, `projectCoverage`, `uncoveredRanges`), and `ignored[]`. Human output is monochrome with status colors only and honors `NO_COLOR`.
+
+## Security
+
+`tested run` executes your project's test runner (`npx vitest`, `jest`, `pytest`). Only run it in repositories you trust.
+
+- Token: `TESTED_TOKEN`, `TESTED_INGEST_TOKEN`, or `TESTED_TOKEN_FILE` (rejected when world-readable). `--token` is visible in `ps`.
+- In CI, non-interactive shells, or with `TESTED_SAFE_RUN=1`, `tested run` rejects `--watch` / `--watchAll` and `--config` paths outside the repo root.
+- Push sends the token only to `https://app.tested.dev` or `*.tested.dev` (plus `http://localhost`). Other hosts need `TESTED_ALLOW_CUSTOM_API_URL=1`. Redirects are refused.
+- Always-on MCP hosts: set `TESTED_ALLOWED_CWDS` (see `@tested/mcp`) so tools cannot target arbitrary directories.
+
+## Development
+
+```bash
+pnpm install
+pnpm test
+pnpm build      # dist/tested.js
+```
+
+The husky pre-push hook runs `tested` on this repo and blocks the push when patch coverage is under 50%.
 
 ## Release
 
-Ship `@tested/cli` from a GitHub Release. `.github/workflows/release.yml` publishes to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC). No `NPM_TOKEN`.
+`.github/workflows/release.yml` publishes to npm from a GitHub Release with [trusted publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC). No npm token.
 
 1. Bump `version` in `package.json` on `main` and merge.
-2. From that commit: `gh release create vX.Y.Z --generate-notes` (tag must match `package.json`, e.g. `v0.1.9` → `0.1.9`).
+2. From that commit: `gh release create vX.Y.Z --generate-notes`. The tag must match `package.json` (`v0.1.10` → `0.1.10`).
 
-One-time npmjs.com setup (package settings → Trusted Publisher → GitHub Actions):
+One-time setup on npmjs.com (package settings → Trusted Publisher → GitHub Actions):
 
 - Organization: `tested-hq`
 - Repository: `cli`
 - Workflow filename: `release.yml`
-- Environment: (none)
+- Environment: none
 - Allowed action: `npm publish`
